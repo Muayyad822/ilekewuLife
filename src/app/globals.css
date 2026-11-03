@@ -1,26 +1,307 @@
 @import "tailwindcss";
 
+/* Light-only panels: dark: variants apply only with an explicit .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   KEWU DESIGN SYSTEM  —  "Naija Night-Market Glass"
+   Palette drawn from the world itself: Lagos danfo yellow, madrasah emerald,
+   terracotta compound earth, mosque-gold, and deep night ink.
+   ========================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Core palette */
+  --kw-ink: #0a1411;
+  --kw-ink-2: #10201a;
+  --kw-emerald-950: #05241b;
+  --kw-emerald-800: #0d4a37;
+  --kw-emerald-600: #14805c;
+  --kw-emerald-400: #34d399;
+  --kw-gold: #f5b335;
+  --kw-gold-soft: #ffd978;
+  --kw-danfo: #ffc61a;
+  --kw-terracotta: #d9622b;
+  --kw-cream: #fff6e0;
+  --kw-cream-dim: #d9cfb4;
+  --kw-sky: #60a5fa;
+  --kw-rose: #fb7185;
+  --kw-violet: #a78bfa;
+
+  /* Surfaces */
+  --kw-glass: rgba(10, 22, 18, 0.62);
+  --kw-glass-strong: rgba(8, 18, 14, 0.82);
+  --kw-border: rgba(255, 217, 120, 0.2);
+  --kw-border-strong: rgba(255, 217, 120, 0.45);
+
+  /* Shape & depth */
+  --kw-radius-sm: 10px;
+  --kw-radius: 16px;
+  --kw-radius-lg: 24px;
+  --kw-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.55);
+  --kw-glow: 0 0 0 1px var(--kw-border), 0 8px 24px -6px rgba(245, 179, 53, 0.25);
+
+  --background: var(--kw-ink);
+  --foreground: var(--kw-cream);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-kw-ink: var(--kw-ink);
+  --color-kw-emerald: var(--kw-emerald-600);
+  --color-kw-emerald-deep: var(--kw-emerald-800);
+  --color-kw-emerald-bright: var(--kw-emerald-400);
+  --color-kw-gold: var(--kw-gold);
+  --color-kw-gold-soft: var(--kw-gold-soft);
+  --color-kw-danfo: var(--kw-danfo);
+  --color-kw-terracotta: var(--kw-terracotta);
+  --color-kw-cream: var(--kw-cream);
+  --color-kw-cream-dim: var(--kw-cream-dim);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display), var(--font-geist-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--kw-ink);
+  color: var(--kw-cream);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------- Input-aware visibility ---------- */
+.kw-touch-only {
+  display: none !important;
+}
+.kw-pointer-only {
+  display: flex;
+}
+@media (pointer: coarse) {
+  .kw-touch-only {
+    display: flex !important;
+  }
+  .kw-pointer-only {
+    display: none !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------- Safe areas (notches / home indicator) ---------- */
+.kw-safe-top {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+.kw-safe-left {
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+}
+.kw-safe-right {
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+}
+.kw-safe-bottom {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+/* ---------- Components ---------- */
+.kw-glass {
+  background: var(--kw-glass);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  border: 1px solid var(--kw-border);
+  box-shadow: var(--kw-shadow);
+  border-radius: var(--kw-radius);
+  color: var(--kw-cream);
+}
+
+.kw-glass-strong {
+  background: var(--kw-glass-strong);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--kw-border-strong);
+  box-shadow: var(--kw-shadow);
+  border-radius: var(--kw-radius-lg);
+  color: var(--kw-cream);
+}
+
+.kw-display {
+  font-family: var(--font-display), var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.kw-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--kw-gold-soft);
+}
+
+.kw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--kw-radius-sm);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--kw-cream);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--kw-border);
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.kw-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--kw-border-strong);
+}
+.kw-btn:active {
+  transform: scale(0.96);
+}
+
+.kw-btn-primary {
+  background: linear-gradient(180deg, var(--kw-gold-soft), var(--kw-gold));
+  color: #2a1c00;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 6px 18px -4px rgba(245, 179, 53, 0.55);
+}
+.kw-btn-primary:hover {
+  background: linear-gradient(180deg, #ffe49a, #f7be4a);
+}
+
+.kw-dock-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: min(62px, 15.2vw);
+  padding: 8px 2px;
+  border-radius: 14px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  color: var(--kw-cream-dim);
+  transition: transform 0.12s ease, background 0.15s ease, color 0.15s ease;
+}
+.kw-dock-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--kw-cream);
+}
+.kw-dock-btn[data-active="true"] {
+  background: linear-gradient(180deg, rgba(255, 217, 120, 0.25), rgba(245, 179, 53, 0.12));
+  color: var(--kw-gold-soft);
+  box-shadow: inset 0 0 0 1px var(--kw-border-strong);
+}
+.kw-dock-btn:active {
+  transform: scale(0.92);
+}
+
+.kw-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.kw-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+/* World name-plates (projected from 3D) */
+.kw-nameplate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  will-change: transform;
+  white-space: nowrap;
+}
+.kw-nameplate .tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: rgba(8, 18, 14, 0.72);
+  border: 1px solid var(--kw-border);
+  color: var(--kw-cream);
+}
+.kw-nameplate .tag small {
+  font-weight: 600;
+  color: var(--kw-gold-soft);
+  margin-left: 4px;
+}
+.kw-nameplate .bubble {
+  max-width: 190px;
+  white-space: normal;
+  text-align: center;
+  padding: 5px 9px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #1a1204;
+  background: var(--kw-cream);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(4px) scale(0.95);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.kw-nameplate .bubble[data-show="true"] {
+  opacity: 1;
+  transform: none;
+}
+.kw-nameplate.is-player .tag {
+  background: linear-gradient(180deg, var(--kw-gold-soft), var(--kw-gold));
+  color: #2a1c00;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.kw-nameplate.is-player .tag small {
+  color: #5a3d00;
+}
+
+@keyframes kw-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kw-pop {
+  animation: kw-pop 0.22s ease-out both;
+}
+
+@keyframes kw-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 179, 53, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(245, 179, 53, 0);
+  }
+}
+.kw-pulse {
+  animation: kw-pulse-ring 1.6s ease-out infinite;
+}
+
+.kw-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.kw-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.kw-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 217, 120, 0.3);
+  border-radius: 8px;
 }
