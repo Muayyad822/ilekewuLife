@@ -12,6 +12,7 @@ import {
 } from '@/data/lessons';
 import { prayerFor } from '@/lib/time';
 import { sound } from '@/lib/audio';
+import { FootballMinigame } from '@/components/FootballMinigame';
 import { CheckCircle2, XCircle, Lock, Bus, Sparkles, BookOpen, ShoppingBag, Volume2 } from 'lucide-react';
 
 // ============================================================================
@@ -454,7 +455,7 @@ const ShopView: React.FC = () => {
 // Danfo Bus Stop Route Picker
 // ============================================================================
 const BusView: React.FC = () => {
-  const { location, player, owned, startRide, nextDay, setHour, setActiveTab } = useGameStore();
+  const { location, player, owned, startRide, nextDay, setActiveTab } = useGameStore();
   const [err, setErr] = useState<string | null>(null);
 
   const routes: { to: Loc; title: string; subtitle: string; badge: string; locked?: string }[] = [
@@ -545,7 +546,6 @@ const BusView: React.FC = () => {
         <button
           onClick={() => {
             nextDay();
-            setHour(6.5);
             setActiveTab('life');
           }}
           className="text-xs font-bold px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white cursor-pointer"
@@ -837,6 +837,9 @@ export const ActivityModal: React.FC = () => {
   } else if (activity === 'bus') {
     title = 'Danfo Bus Stop — Lagos Transit';
     body = <BusView />;
+  } else if (activity === 'football') {
+    title = 'Kewu F.C. — Ping-Pong Table Soccer';
+    body = <FootballMinigame onClose={close} />;
   }
 
   return (

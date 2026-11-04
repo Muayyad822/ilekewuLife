@@ -126,7 +126,7 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   };
 
   // ===================== GROUND & STREET =====================
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 120), mat(0xb89560, 1));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 140), mat(0xb89560, 1));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
@@ -139,17 +139,17 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     scene.add(m);
   };
   strip(0, -3, 32, 18, 0xe3c48f); // compound earth
-  strip(0, 8.25, 160, 4.5, 0xbab5a8); // north pavement
-  strip(0, 14, 160, 7, 0x2a2c32); // asphalt
-  strip(0, 21.75, 160, 8.5, 0xbab5a8); // south pavement
+  strip(0, 8.25, 600, 4.5, 0xbab5a8); // north pavement
+  strip(0, 14, 600, 7, 0x2a2c32); // asphalt
+  strip(0, 21.75, 600, 8.5, 0xbab5a8); // south pavement
   strip(0, -1.2, 12, 8, 0x14664a, 0.02); // prayer mat
   strip(0, -1.2, 11, 7, 0x1b8a64, 0.025);
 
-  for (let x = -70; x < 70; x += 4.5) box(scene, 2.2, 0.01, 0.18, 0xf2f2f2, x, 0.03, 14, { cast: false });
-  for (let x = -44; x < 44; x += 2) {
-    const c = ((x + 44) / 2) % 2 === 0 ? 0xffc61a : 0x1a1a1a;
-    box(scene, 2, 0.18, 0.35, c, x + 1, 0.09, 10.5);
-    box(scene, 2, 0.18, 0.35, c, x + 1, 0.09, 17.5);
+  for (let x = -270; x < 270; x += 5) box(scene, 2.4, 0.01, 0.18, 0xf2f2f2, x, 0.03, 14, { cast: false });
+  for (let x = -260; x < 260; x += 4) {
+    const c = ((x + 260) / 4) % 2 === 0 ? 0xffc61a : 0x1a1a1a;
+    box(scene, 4, 0.18, 0.35, c, x + 2, 0.09, 10.5);
+    box(scene, 4, 0.18, 0.35, c, x + 2, 0.09, 17.5);
   }
 
   // ===================== COMPOUND WALLS =====================
@@ -297,6 +297,52 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   place(gen, 13, 0, 3.5);
   solid(13, 3.5, 0.85, 0.55);
 
+  // ===================== KEWU F.C. PING-PONG SOCCER PITCH (WEST LOT BESIDE COMPOUND) =====================
+  const pitchX = -24.5;
+  const pitchZ = -2.0;
+  strip(pitchX, pitchZ, 11.4, 13.6, 0x15803d, 0.02); // outer pitch turf
+  // Alternating grass stripes
+  for (let i = -2; i <= 2; i++) {
+    strip(pitchX, pitchZ + i * 2.4, 10.4, 1.2, i % 2 === 0 ? 0x16a34a : 0x15803d, 0.026);
+  }
+  // White touchlines & halfway line
+  box(scene, 10.6, 0.02, 0.12, 0xffffff, pitchX, 0.03, pitchZ - 6.2, { cast: false });
+  box(scene, 10.6, 0.02, 0.12, 0xffffff, pitchX, 0.03, pitchZ + 6.2, { cast: false });
+  box(scene, 0.12, 0.02, 12.4, 0xffffff, pitchX - 5.3, 0.03, pitchZ, { cast: false });
+  box(scene, 0.12, 0.02, 12.4, 0xffffff, pitchX + 5.3, 0.03, pitchZ, { cast: false });
+  box(scene, 10.6, 0.02, 0.1, 0xffffff, pitchX, 0.03, pitchZ, { cast: false });
+  // Center circle & spot
+  const centerRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.45, 1.58, 24),
+    mat(0xffffff, 0.9),
+  );
+  centerRing.rotation.x = -Math.PI / 2;
+  centerRing.position.set(pitchX, 0.032, pitchZ);
+  scene.add(centerRing);
+  // Ping-pong table soccer side-boards (low rebound barriers along left & right touchlines)
+  box(scene, 0.25, 0.55, 12.8, 0x0284c7, pitchX - 5.55, 0.28, pitchZ);
+  box(scene, 0.25, 0.55, 12.8, 0x0284c7, pitchX + 5.55, 0.28, pitchZ);
+  box(scene, 0.3, 0.08, 12.85, 0xffc61a, pitchX - 5.55, 0.58, pitchZ);
+  box(scene, 0.3, 0.08, 12.85, 0xffc61a, pitchX + 5.55, 0.58, pitchZ);
+
+  // North & South Goalposts (Monkey-Post style with crossbar)
+  for (const dir of [-1, 1]) {
+    const gz = pitchZ + dir * 6.2;
+    cyl(scene, 0.08, 0.08, 1.9, 0xffffff, pitchX - 1.9, 0.95, gz, 8);
+    cyl(scene, 0.08, 0.08, 1.9, 0xffffff, pitchX + 1.9, 0.95, gz, 8);
+    box(scene, 3.96, 0.12, 0.12, 0xffffff, pitchX, 1.9, gz);
+    // Back net support frame
+    cyl(scene, 0.05, 0.05, 1.9, 0xcbd5e1, pitchX - 1.9, 0.95, gz + dir * 0.9, 6);
+    cyl(scene, 0.05, 0.05, 1.9, 0xcbd5e1, pitchX + 1.9, 0.95, gz + dir * 0.9, 6);
+    box(scene, 3.9, 0.08, 0.08, 0xcbd5e1, pitchX, 1.88, gz + dir * 0.9);
+  }
+  // 3D Soccer Ball at the center spot
+  const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 1), mat(0xffffff, 0.4));
+  ball.position.set(pitchX, 0.3, pitchZ);
+  ball.castShadow = true;
+  scene.add(ball);
+  sign(scene, 'KEWU F.C. - TABLE SOCCER', 4.4, 0.58, '#15803d', '#ffd978', pitchX, 2.75, pitchZ + 6.2);
+
   // ===================== TREES =====================
   const tree = (x: number, z: number, s = 1) => {
     const g = new THREE.Group();
@@ -312,11 +358,17 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     place(g, x, 0, z);
     solid(x, z, 0.4 * s, 0.4 * s);
   };
-  [[-13, -9], [13, -9], [-14, 4.5], [14.5, 1], [-3.5, 4.4], [4, 4.6], [-30, 8.3], [30, 8.3], [-22, 23], [26, 23], [-38, 23], [38, 8.3]].forEach(([x, z]) => tree(x, z));
+  [
+    [-13, -9], [13, -9], [-14, 4.5], [14.5, 1], [-3.5, 4.4], [4, 4.6],
+    [-30, 8.3], [30, 8.3], [-22, 23], [26, 23], [-38, 23], [38, 8.3],
+    [-75, 8.3], [-115, 23], [-155, 8.3], [-195, 23],
+    [75, 23], [115, 8.3], [155, 23], [195, 8.3],
+  ].forEach(([x, z]) => tree(x, z));
 
   // ===================== NEPA POLES, CABLES & LAMPS =====================
   const poleTops: THREE.Vector3[] = [];
-  for (let x = -36; x <= 36; x += 12) {
+  for (let x = -240; x <= 240; x += 16) {
+    if (x === 0) continue;
     const g = new THREE.Group();
     cyl(g, 0.12, 0.18, 7, 0x6b4f3a, 0, 3.5, 0, 8);
     box(g, 1.8, 0.12, 0.12, 0x5a3f2c, 0, 6.6, 0);
@@ -387,10 +439,23 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     solid(x, z - 0.3, 2, 0.4);
   };
   makeBusStop(24, 8.6, 'BUS STOP - EJIGBO');
-  makeBusStop(46, 8.6, 'BUS STOP - ISOLO');
-  makeBusStop(-46, 8.6, 'BUS STOP - IDIMU');
+  makeBusStop(220, 8.6, 'BUS STOP - ISOLO');
+  makeBusStop(-220, 8.6, 'BUS STOP - IDIMU');
 
-  // East Hub: Isolo Estate Duplex (Home Lesson destination)
+  // Roadside Milestone Signs along the highway so the journey feels real
+  const makeMilestone = (x: number, text: string) => {
+    const m = new THREE.Group();
+    cyl(m, 0.06, 0.06, 2.4, 0x333333, -1.2, 1.2, 0, 6);
+    cyl(m, 0.06, 0.06, 2.4, 0x333333, 1.2, 1.2, 0, 6);
+    sign(m, text, 3.2, 0.55, '#0d4a37', '#fff6e0', 0, 2.1, 0.06);
+    place(m, x, 0, 8.2);
+  };
+  makeMilestone(90, 'OKE-AFA BRIDGE → ISOLO');
+  makeMilestone(155, 'JAKANDE ESTATE GATE');
+  makeMilestone(-90, '← BUCKNOR JUNCTION');
+  makeMilestone(-155, '← COUNCIL / IDIMU RD');
+
+  // East Hub: Isolo Estate Duplex (Home Lesson destination, ~200m east)
   const duplex = new THREE.Group();
   box(duplex, 8, 5.2, 6, 0xfff8e7, 0, 2.6, 0);
   box(duplex, 8.4, 0.35, 6.4, 0x0284c7, 0, 5.35, 0);
@@ -398,10 +463,10 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   for (const px of [-2, 2]) cyl(duplex, 0.15, 0.18, 2.8, 0xffffff, px, 1.4, 4.1, 10);
   box(duplex, 1.6, 2.4, 0.12, 0x3e2723, 0, 1.2, 3.02, { cast: false });
   sign(duplex, 'ISOLO ESTATE - HOME LESSON', 4.6, 0.6, '#0284c7', '#fff6e0', 0, 4.4, 3.06);
-  place(duplex, 55, 0, 2.5);
-  solid(55, 2.5, 4.2, 3.2);
+  place(duplex, 230, 0, 2.5);
+  solid(230, 2.5, 4.2, 3.2);
 
-  // West Hub: Idimu Central Mosque Pavilion (Friday Khutbah destination)
+  // West Hub: Idimu Central Mosque Pavilion (Friday Khutbah destination, ~245m west)
   const idimu = new THREE.Group();
   box(idimu, 9, 4.6, 6.5, 0xe0f2fe, 0, 2.3, 0);
   box(idimu, 9.4, 0.35, 6.9, 0x0d6b4c, 0, 4.75, 0);
@@ -410,8 +475,8 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   iDome.castShadow = true;
   idimu.add(iDome);
   sign(idimu, 'IDIMU CENTRAL MOSQUE', 4.8, 0.6, '#0d6b4c', '#ffd978', 0, 3.9, 3.3);
-  place(idimu, -55, 0, 2.5);
-  solid(-55, 2.5, 4.6, 3.3);
+  place(idimu, -230, 0, 2.5);
+  solid(-230, 2.5, 4.6, 3.3);
 
   // ===================== BACKDROP TENEMENTS =====================
   const palette = [0xe8c39e, 0xc9d6a3, 0xe7a98f, 0xa9c5d8, 0xf0dc9a, 0xd6b2c9, 0xbfa58a];
@@ -431,13 +496,17 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   };
   let seed = 7;
   const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
-  for (let x = -63; x <= 63; x += 9) {
-    building(x, 32, 8, 6 + rnd() * 7, 6, palette[Math.floor(rnd() * palette.length)], -1);
-    building(x, -30, 8, 6 + rnd() * 9, 6, palette[Math.floor(rnd() * palette.length)], 1);
+  for (let x = -252; x <= 252; x += 14) {
+    building(x, 32, 9, 6 + rnd() * 7, 6, palette[Math.floor(rnd() * palette.length)], -1);
+    building(x, -30, 9, 6 + rnd() * 9, 6, palette[Math.floor(rnd() * palette.length)], 1);
+    // Roadside shops/houses along the north side between the compound and far hubs
+    if (Math.abs(x) > 36 && Math.abs(x - 225) > 22 && Math.abs(x + 225) > 22) {
+      building(x, 1, 8, 4.5 + rnd() * 4, 5, palette[Math.floor(rnd() * palette.length)], 1);
+    }
   }
   for (let z = -22; z <= 26; z += 9) {
-    building(-68, z, 6, 6 + rnd() * 6, 8, palette[Math.floor(rnd() * palette.length)], 0);
-    building(68, z, 6, 6 + rnd() * 6, 8, palette[Math.floor(rnd() * palette.length)], 0);
+    building(-268, z, 6, 6 + rnd() * 6, 8, palette[Math.floor(rnd() * palette.length)], 0);
+    building(268, z, 6, 6 + rnd() * 6, 8, palette[Math.floor(rnd() * palette.length)], 0);
   }
 
   // ===================== VEHICLES =====================
@@ -483,7 +552,7 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     g.position.set(x0, 0, z);
     g.rotation.y = dir === 1 ? 0 : Math.PI;
     scene.add(g);
-    vehicles.push({ group: g, speed, dir, wheels, wheelR: 0.42, minX: -75, maxX: 75 });
+    vehicles.push({ group: g, speed, dir, wheels, wheelR: 0.42, minX: -270, maxX: 270 });
   };
 
   const makeKeke = (z: number, dir: 1 | -1, speed: number, x0: number) => {
@@ -502,15 +571,19 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     g.position.set(x0, 0, z);
     g.rotation.y = dir === 1 ? 0 : Math.PI;
     scene.add(g);
-    vehicles.push({ group: g, speed, dir, wheels, wheelR: 0.3, minX: -75, maxX: 75 });
+    vehicles.push({ group: g, speed, dir, wheels, wheelR: 0.3, minX: -270, maxX: 270 });
   };
 
-  makeDanfo(11.6, 1, 6, -40, 'OJUELEGBA-YABA');
-  makeDanfo(11.6, 1, 6, 20, 'MUSHIN-OSHODI');
-  makeDanfo(16.4, -1, 5.5, 30, 'IKEJA-CMS');
-  makeDanfo(16.4, -1, 5.5, -30, 'AGEGE-OBALENDE');
-  makeKeke(13.3, 1, 8, -10);
-  makeKeke(14.7, -1, 8.5, 5);
+  makeDanfo(11.6, 1, 7, -180, 'IDIMU-EJIGBO');
+  makeDanfo(11.6, 1, 7.5, -40, 'OJUELEGBA-YABA');
+  makeDanfo(11.6, 1, 7, 90, 'MUSHIN-OSHODI');
+  makeDanfo(16.4, -1, 6.5, 180, 'ISOLO-IKOTUN');
+  makeDanfo(16.4, -1, 7, 40, 'IKEJA-CMS');
+  makeDanfo(16.4, -1, 6.5, -90, 'AGEGE-OBALENDE');
+  makeKeke(13.3, 1, 8.5, -110);
+  makeKeke(13.3, 1, 8, 60);
+  makeKeke(14.7, -1, 8.5, -20);
+  makeKeke(14.7, -1, 8, 140);
 
   // Dedicated player-chartered Danfo (used when hopping on a bus)
   makeDanfo(10.8, 1, 0, 24, 'CHARTER - EXPRESS');
@@ -573,12 +646,15 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   addNPC('ped4', 'Ustadh Hamza', 'Senior Teacher', 9.5, -3.5, 0, 'idle',
     { robe: 0xffffff, trim: 0x0284c7, cap: 'turban', capColor: 0xeeeeee, beard: 0x222222, prop: 'tesbih', skin: 0x4a2c17 },
     ['As-salamu alaykum!', 'Bring me hot amala from Iya Basira!', 'Al-Ajurrumiyyah class is open in the Adult Shed.']);
-  addNPC('alhaji', 'Alhaji Musa', 'Isolo Patron', 55, 6.8, 0, 'wave',
+  addNPC('alhaji', 'Alhaji Musa', 'Isolo Patron', 230, 6.8, 0, 'wave',
     { robe: 0x1e3a8a, trim: 0xffd700, cap: 'fila', capColor: 0xffd700, beard: 0x444444, skin: 0x5d3a1a },
     ['Welcome, Ustadh! The children are ready for Home Lesson!', 'Teach them Quran and good character!']);
-  addNPC('imam', 'Sheikh Sulaiman', 'Idimu Chief Imam', -55, 6.8, 0, 'idle',
+  addNPC('imam', 'Sheikh Sulaiman', 'Idimu Chief Imam', -230, 6.8, 0, 'idle',
     { robe: 0x0d6b4c, trim: 0xffd700, cap: 'turban', capColor: 0xffffff, beard: 0xdddddd, prop: 'cane', skin: 0x3b2314 },
     ['Welcome to Idimu Central Mosque!', 'Ascend the minbar when you are ready for the Khutbah.']);
+  addNPC('ridwan', 'Ridwan', 'Kewu FC Captain', -21.2, 5.2, 0, 'wave',
+    { robe: 0x16a34a, trim: 0xffc61a, cap: 'kofia', capColor: 0xffffff, skin: 0x4a2c17 },
+    ['Oya! 1-on-1 Ping-Pong Football!', 'First to 3 goals wins the street cup!', 'No hands o, test your reflexes!']);
 
   const dispose = () => {
     npcs.forEach((n) => n.char.dispose());

@@ -76,7 +76,7 @@ export type ActivityId =
   | 'alfa' | 'ibtida' | 'well'
   | 'hifz' | 'huruf' | 'tutor' | 'wudu' | 'nahw'
   | 'adhan' | 'khutbah' | 'homelesson'
-  | 'shop' | 'bus';
+  | 'shop' | 'bus' | 'football';
 
 export interface Outfit {
   robe: number;

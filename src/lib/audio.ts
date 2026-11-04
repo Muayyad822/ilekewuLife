@@ -1,11 +1,24 @@
-// Web Audio Synthesizer for Authentic Ile-Kewu Sound Effects
+// Sound Engine & Background Nasheed Player for Ile-Kewu
+
+/**
+ * Place your Nasheed MP3 at `public/audio/nasheed.mp3` (or add more track URLs here).
+ * It will loop automatically in the background whenever the game is unmuted.
+ */
+export const NASHEED_SOURCES: string[] = [
+  '/audio/nasheed.mp3',
+];
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private bgStarted: boolean = false;
+  private htmlAudio: HTMLAudioElement | null = null;
 
   private initContext() {
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
     }
     if (this.ctx && this.ctx.state === 'suspended') {
@@ -15,10 +28,35 @@ class SoundEngine {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
+    if (muted) {
+      if (this.htmlAudio) this.htmlAudio.pause();
+    } else if (this.bgStarted && this.htmlAudio) {
+      this.htmlAudio.play().catch(() => {});
+    }
   }
 
   public getMuted(): boolean {
     return this.isMuted;
+  }
+
+  /**
+   * Starts continuous background Nasheed audio from `public/audio/nasheed.mp3`.
+   */
+  public startBgNasheed() {
+    if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
+    if (!this.bgStarted) {
+      this.bgStarted = true;
+      if (NASHEED_SOURCES.length === 0) return;
+      const audio = new Audio(NASHEED_SOURCES[0]);
+      audio.loop = true;
+      audio.volume = 0.12;
+      this.htmlAudio = audio;
+      if (!this.isMuted) {
+        audio.play().catch(() => {});
+      }
+    } else if (!this.isMuted && this.htmlAudio) {
+      this.htmlAudio.play().catch(() => {});
+    }
   }
 
   // Pasan (Cane / Whip) Swoosh sound
@@ -34,7 +72,7 @@ class SoundEngine {
     osc.frequency.setValueAtTime(800, this.ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.15);
 
-    gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
 
     osc.connect(gain);
@@ -57,7 +95,7 @@ class SoundEngine {
     osc.frequency.setValueAtTime(440, this.ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.08);
 
-    gain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.22, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
 
     osc.connect(gain);
@@ -80,7 +118,7 @@ class SoundEngine {
     osc.frequency.setValueAtTime(987.77, this.ctx.currentTime); // B5
     osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime + 0.08); // E6
 
-    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.14, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
 
     osc.connect(gain);
@@ -104,7 +142,7 @@ class SoundEngine {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, this.ctx!.currentTime + idx * 0.1);
 
-      gain.gain.setValueAtTime(0.25, this.ctx!.currentTime + idx * 0.1);
+      gain.gain.setValueAtTime(0.12, this.ctx!.currentTime + idx * 0.1);
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx!.currentTime + idx * 0.1 + 0.4);
 
       osc.connect(gain);
@@ -121,7 +159,6 @@ class SoundEngine {
     this.initContext();
     if (!this.ctx) return;
 
-    // Pinkish noise buffer
     const bufferSize = this.ctx.sampleRate * 0.3;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -138,7 +175,7 @@ class SoundEngine {
     filter.frequency.linearRampToValueAtTime(300, this.ctx.currentTime + 0.3);
 
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.14, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
 
     noise.connect(filter);

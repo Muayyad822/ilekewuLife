@@ -6,6 +6,9 @@ import {
 import { GAME_EVENTS } from '@/data/events';
 import { SHOP_ITEMS, DEFAULT_OWNED, DEFAULT_OUTFIT } from '@/data/shop';
 import { sound } from '@/lib/audio';
+import {
+  WeatherInfo, DEFAULT_WEATHER, SolatTimings, DEFAULT_LAGOS_TIMINGS,
+} from '@/lib/time';
 
 export type TabId = 'compound' | 'life' | 'walaah' | 'quiz' | 'minbar' | 'rankings';
 
@@ -29,8 +32,12 @@ interface GameState {
   isMuted: boolean;
   /** 'compound' = no panel open, the 3D world is fully visible */
   activeTab: TabId;
-  /** In-game hour of day (0-24) */
+  /** Real-world hour of day (0-24) */
   hour: number;
+  /** Live Lagos weather state */
+  weather: WeatherInfo;
+  /** Daily Lagos Solat timings */
+  solatTimings: SolatTimings;
 
   // Interactive systems
   owned: string[];
@@ -50,6 +57,8 @@ interface GameState {
   toggleMute: () => void;
   setActiveTab: (tab: TabId) => void;
   setHour: (hour: number) => void;
+  setWeather: (weather: WeatherInfo) => void;
+  setSolatTimings: (timings: SolatTimings) => void;
   setActivity: (activity: ActivityId | null) => void;
   /** Pay naira (if affordable) and apply stat changes. Returns false if too poor. */
   spend: (cost: number, changes: Partial<PlayerStats>, log: string) => boolean;
@@ -159,6 +168,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   isMuted: false,
   activeTab: 'compound',
   hour: 7,
+  weather: DEFAULT_WEATHER,
+  solatTimings: DEFAULT_LAGOS_TIMINGS,
 
   owned: [...DEFAULT_OWNED],
   outfit: { ...DEFAULT_OUTFIT },
@@ -172,6 +183,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   rally: 0,
 
   setHour: (hour) => set({ hour }),
+  setWeather: (weather) => set({ weather }),
+  setSolatTimings: (solatTimings) => set({ solatTimings }),
   setActivity: (activity) => set({ activity, activeTab: 'compound' }),
 
   spend: (cost, changes, log) => {
@@ -361,6 +374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleMute: () => {
     const nextMuted = !get().isMuted;
     sound.setMuted(nextMuted);
+    if (!nextMuted) sound.startBgNasheed();
     set({ isMuted: nextMuted });
   },
 

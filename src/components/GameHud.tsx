@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGameStore, TabId } from '@/store/gameStore';
-import { prayerFor, formatHour } from '@/lib/time';
+import { prayerFor, formatHour, realHourNow } from '@/lib/time';
 import { EventCard } from '@/components/EventCard';
 import { WalaahMinigame } from '@/components/WalaahMinigame';
 import { QuizMinigame } from '@/components/QuizMinigame';
@@ -62,17 +62,37 @@ export const TopLeftHud: React.FC = () => {
 };
 
 export const TopRightHud: React.FC = () => {
-  const { hour, isMuted, toggleMute, resetGame } = useGameStore();
-  const prayer = prayerFor(hour);
+  const { hour, setHour, weather, solatTimings, isMuted, toggleMute, resetGame } = useGameStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setHour(realHourNow());
+    const id = setInterval(() => {
+      setHour(realHourNow());
+    }, 10000);
+    return () => clearInterval(id);
+  }, [setHour]);
+
+  const displayHour = mounted ? hour : 7;
+  const prayer = prayerFor(displayHour, solatTimings);
   return (
     <div className="kw-glass kw-safe-top kw-safe-right absolute px-2.5 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
       <div className="text-right leading-tight">
-        <div className="kw-display text-[15px] font-extrabold flex items-center justify-end gap-1.5">
+        <div className="kw-display text-[14px] sm:text-[15px] font-extrabold flex items-center justify-end gap-1.5">
           <span>{prayer.icon}</span>
-          {prayer.name}
+          <span>{prayer.name}</span>
           <span dir="rtl" className="font-serif text-kw-gold-soft text-sm hidden sm:inline">{prayer.arabic}</span>
         </div>
-        <div className="text-[10.5px] text-kw-cream-dim font-mono">{formatHour(hour)}</div>
+        <div className="text-[10.5px] text-kw-cream-dim font-mono flex items-center justify-end gap-1.5">
+          <span className="text-white font-bold">{mounted ? formatHour(displayHour) : '--:--'}</span>
+          <span className="hidden md:inline text-kw-gold-soft">· Next {prayer.nextName} {prayer.nextTimeStr}</span>
+        </div>
+        <div className="text-[10px] text-sky-300 font-semibold flex items-center justify-end gap-1 mt-0.5">
+          <span>{weather.icon}</span>
+          <span className="font-mono font-bold">{weather.tempC}°C</span>
+          <span className="hidden sm:inline">· {weather.label}</span>
+        </div>
       </div>
       <div className="flex items-center gap-1 border-l border-white/10 pl-2">
         <button

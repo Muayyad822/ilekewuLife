@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
+import { realHourNow, fetchLagosWeather, fetchLagosSolatTimings } from '@/lib/time';
 import { buildCharacter, Character } from './characterBuilder';
 import { createWorld } from './worldBuilders';
 import { Hand, MessageSquare, X } from 'lucide-react';
@@ -54,11 +55,11 @@ const shortestAngle = (from: number, to: number) => {
 
 const MAP_W = 168;
 const MAP_H = 80;
-const X_MIN = -62;
-const X_MAX = 62;
+const X_MIN = -255;
+const X_MAX = 255;
 const Z_MIN = -12;
 const Z_MAX = 26;
-const STOP_X = { school: 24, east: 46, west: -46 } as const;
+const STOP_X = { school: 24, east: 220, west: -220 } as const;
 
 export const LagosWorld: React.FC = () => {
   const { ride, errand, updateRide } = useGameStore();
@@ -143,6 +144,39 @@ export const LagosWorld: React.FC = () => {
     // ---------- World ----------
     const world = createWorld(scene);
 
+    // ---------- 3D Rain Particle System (activates during live Lagos rain/storm) ----------
+    const RAIN_COUNT = 900;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(RAIN_COUNT * 3);
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      rainPositions[i * 3] = (Math.random() - 0.5) * 44;
+      rainPositions[i * 3 + 1] = Math.random() * 20;
+      rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 44;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0xcbe4ff,
+      size: 0.14,
+      transparent: true,
+      opacity: 0.72,
+    });
+    const rainPoints = new THREE.Points(rainGeo, rainMat);
+    rainPoints.visible = false;
+    scene.add(rainPoints);
+
+    // Sync real-world Lagos weather & Solat timings
+    let weatherActive = true;
+    const syncRealWorld = () => {
+      fetchLagosWeather().then((w) => {
+        if (weatherActive) useGameStore.getState().setWeather(w);
+      });
+      fetchLagosSolatTimings().then((t) => {
+        if (weatherActive) useGameStore.getState().setSolatTimings(t);
+      });
+    };
+    syncRealWorld();
+    const weatherInterval = setInterval(syncRealWorld, 10 * 60 * 1000);
+
     // ---------- Player ----------
     const makePlayer = () => {
       const { player, outfit } = useGameStore.getState();
@@ -156,7 +190,6 @@ export const LagosWorld: React.FC = () => {
         skin: 0x5d3a1a,
       });
     };
-    const initial = useGameStore.getState().player;
     let playerChar: Character = makePlayer();
     scene.add(playerChar.group);
     const pos = { x: 0, z: 3.8, rot: Math.PI };
@@ -191,8 +224,9 @@ export const LagosWorld: React.FC = () => {
       labels.push(l);
       return l;
     };
-    const playerLabel = makeLabel(initial.name, 'You', playerChar.group, 2.05, [], true);
+    const KEY_NPCS = new Set(['alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan']);
     world.npcs.forEach((n) => {
+      if (!KEY_NPCS.has(n.id)) return;
       const sitting = n.idlePose === 'recite' || n.idlePose === 'alfa' || n.idlePose === 'sit';
       const s = n.char.group.scale.x;
       makeLabel(n.name, n.title, n.char.group, (sitting ? 1.35 : 2.0) * s, n.lines);
@@ -270,24 +304,29 @@ export const LagosWorld: React.FC = () => {
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'bus_east', name: 'Isolo Bus Stop', arabic: 'مَحَطَّة إِيسُولُو', x: 46, z: 9.4, radius: 3,
+        id: 'bus_east', name: 'Isolo Bus Stop', arabic: 'مَحَطَّة إِيسُولُو', x: 220, z: 9.4, radius: 3.2,
         action: 'Hop on a Danfo (Return to School)',
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'bus_west', name: 'Idimu Bus Stop', arabic: 'مَحَطَّة إِيدِيمُو', x: -46, z: 9.4, radius: 3,
+        id: 'bus_west', name: 'Idimu Bus Stop', arabic: 'مَحَطَّة إِيدِيمُو', x: -220, z: 9.4, radius: 3.2,
         action: 'Hop on a Danfo (Return to School)',
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'isolo_lesson', name: 'Isolo Estate Duplex', arabic: 'دَرْسٌ خُصُوصِيٌّ', x: 55, z: 6.5, radius: 3.2,
+        id: 'isolo_lesson', name: 'Isolo Estate Duplex', arabic: 'دَرْسٌ خُصُوصِيٌّ', x: 230, z: 6.5, radius: 3.5,
         action: 'Teach Private Home Lesson (Earn ₦3,500)',
         onInteract: () => { st().setActivity('homelesson'); },
       },
       {
-        id: 'idimu_mosque', name: 'Idimu Central Mosque', arabic: 'خُطْبَةُ الجُمُعَة', x: -55, z: 6.5, radius: 3.2,
+        id: 'idimu_mosque', name: 'Idimu Central Mosque', arabic: 'خُطْبَةُ الجُمُعَة', x: -230, z: 6.5, radius: 3.5,
         action: 'Deliver Friday Khutbah (Earn ₦6,000)',
         onInteract: () => { st().setActivity('khutbah'); },
+      },
+      {
+        id: 'football', name: 'Kewu F.C. Table Soccer Pitch', arabic: 'مَلْعَبُ كُرَةِ الْقَدَمِ', x: -24.5, z: 3.5, radius: 5.8,
+        action: 'Play Ping-Pong Football (Win ₦500–₦1,200)',
+        onInteract: () => { st().setActivity('football'); },
       },
     ];
     let nearZone: Zone | null = null;
@@ -306,6 +345,9 @@ export const LagosWorld: React.FC = () => {
     emoteRef.current = () => {
       emoteUntil = time + 2.5;
     };
+    const unlockAudio = () => sound.startBgNasheed();
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       const k = e.key.toLowerCase();
@@ -369,15 +411,23 @@ export const LagosWorld: React.FC = () => {
     // ---------- Loop ----------
     const clock = new THREE.Clock();
     let raf = 0;
-    let hour = st().hour;
-    let lastWritten = hour;
+    let hour = realHourNow();
     let lastStoreWrite = 0;
     let lastMap = 0;
     const tmpColor = new THREE.Color();
+    const weatherTint = new THREE.Color();
     const tmpV = new THREE.Vector3();
     const mapCtx = minimapRef.current?.getContext('2d') ?? null;
     const R = 0.4;
-    const COLORS = { sunNoon: new THREE.Color(0xfff6e0), sunLow: new THREE.Color(0xffd0a0), moon: new THREE.Color(0x7f93d6) };
+    const COLORS = {
+      sunNoon: new THREE.Color(0xfff6e0),
+      sunLow: new THREE.Color(0xffd0a0),
+      moon: new THREE.Color(0x7f93d6),
+      rainSky: new THREE.Color(0x4b5d6e),
+      stormSky: new THREE.Color(0x2d3846),
+      cloudSky: new THREE.Color(0x9fb4c7),
+      harmattanSky: new THREE.Color(0xd6c4a8),
+    };
 
     // Pause the simulation (and save battery) while a panel covers the world
     let paused = st().activeTab !== 'compound' || st().activity !== null;
@@ -392,7 +442,6 @@ export const LagosWorld: React.FC = () => {
         playerChar.group.position.set(pos.x, 0, pos.z);
         playerChar.group.rotation.y = pos.rot;
         scene.add(playerChar.group);
-        playerLabel.obj = playerChar.group;
       }
     });
 
@@ -402,18 +451,42 @@ export const LagosWorld: React.FC = () => {
       if (paused) return;
       time += dt;
 
-      // --- time of day (20s per in-game hour) ---
-      const external = st().hour;
-      if (external !== lastWritten) hour = external;
-      hour = (hour + dt / 20) % 24;
-      lastWritten = hour;
-      if (time - lastStoreWrite > 0.5) {
+      // --- real-world time of day & live Lagos weather ---
+      hour = realHourNow();
+      if (time - lastStoreWrite > 1.0) {
         lastStoreWrite = time;
         st().setHour(hour);
       }
-      const light = sampleSky(hour, tmpColor);
+      const wCond = st().weather.condition;
+      let light = sampleSky(hour, tmpColor);
+      const fog = scene.fog as THREE.FogExp2;
+
+      if (wCond === 'rain') {
+        weatherTint.copy(COLORS.rainSky).multiplyScalar(Math.max(0.25, light));
+        tmpColor.lerp(weatherTint, 0.62);
+        light *= 0.65;
+        fog.density = 0.016;
+      } else if (wCond === 'storm') {
+        weatherTint.copy(COLORS.stormSky).multiplyScalar(Math.max(0.2, light));
+        tmpColor.lerp(weatherTint, 0.78);
+        light *= 0.48;
+        fog.density = 0.02;
+      } else if (wCond === 'harmattan') {
+        weatherTint.copy(COLORS.harmattanSky).multiplyScalar(Math.max(0.25, light));
+        tmpColor.lerp(weatherTint, 0.55);
+        light *= 0.82;
+        fog.density = 0.018;
+      } else if (wCond === 'clouds') {
+        weatherTint.copy(COLORS.cloudSky).multiplyScalar(Math.max(0.25, light));
+        tmpColor.lerp(weatherTint, 0.25);
+        light *= 0.9;
+        fog.density = 0.012;
+      } else {
+        fog.density = 0.0095;
+      }
+
       skyColor.copy(tmpColor);
-      (scene.fog as THREE.FogExp2).color.copy(tmpColor);
+      fog.color.copy(tmpColor);
       const night = THREE.MathUtils.clamp((0.6 - light) / 0.4, 0, 1);
       hemi.intensity = 0.28 + 0.65 * light;
       hemi.color.copy(tmpColor).lerp(new THREE.Color(0xffffff), 0.6);
@@ -423,7 +496,7 @@ export const LagosWorld: React.FC = () => {
       sun.target.position.set(pos.x, 0, pos.z);
       if (sunUp) {
         sun.color.copy(COLORS.sunLow).lerp(COLORS.sunNoon, Math.min(1, light));
-        sun.intensity = 0.3 + 1.2 * light;
+        sun.intensity = (0.3 + 1.2 * light) * (wCond === 'rain' || wCond === 'storm' ? 0.45 : 1);
       } else {
         sun.color.copy(COLORS.moon);
         sun.intensity = 0.35;
@@ -431,6 +504,24 @@ export const LagosWorld: React.FC = () => {
       world.lampMats.forEach((m) => (m.emissiveIntensity = 0.2 + 2.4 * night));
       world.windowMats.forEach((m) => (m.emissiveIntensity = night * 1.1));
       world.headMats.forEach((m) => (m.emissiveIntensity = 0.2 + 2 * night));
+
+      // Animate 3D rain drops around the player when raining/storming
+      const isRaining = wCond === 'rain' || wCond === 'storm';
+      rainPoints.visible = isRaining;
+      if (isRaining) {
+        rainPoints.position.set(pos.x, 0, pos.z);
+        const attr = rainGeo.getAttribute('position') as THREE.BufferAttribute;
+        const arr = attr.array as Float32Array;
+        const dropSpeed = (wCond === 'storm' ? 22 : 16) * dt;
+        const windDrift = (wCond === 'storm' ? 3.5 : 1.2) * dt;
+        for (let i = 0; i < RAIN_COUNT; i++) {
+          arr[i * 3] += windDrift;
+          if (arr[i * 3] > 22) arr[i * 3] -= 44;
+          arr[i * 3 + 1] -= dropSpeed;
+          if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 18 + Math.random() * 4;
+        }
+        attr.needsUpdate = true;
+      }
 
       // --- Danfo Transit Ride OR Player Walking ---
       const activeRide = st().ride;
@@ -440,7 +531,7 @@ export const LagosWorld: React.FC = () => {
         const dir: 1 | -1 = x1 >= x0 ? 1 : -1;
         const laneZ = dir === 1 ? 11.6 : 16.4;
         const dist = Math.abs(x1 - x0);
-        const busSpeed = 13; // units per second
+        const busSpeed = 9.5; // metres per second (~21s to Isolo, ~26s to Idimu)
         const nextP = activeRide.progress + (busSpeed * dt) / Math.max(10, dist);
         if (nextP >= 1) {
           world.rideBus.group.visible = false;
@@ -590,32 +681,32 @@ export const LagosWorld: React.FC = () => {
         setNearby(best ? { name: best.name, arabic: best.arabic, action: best.action } : null);
       }
 
-      // --- name-plates ---
+      // --- name-plates (only key teachers & shop owners, when nearby) ---
       const w = renderer.domElement.clientWidth;
       const h = renderer.domElement.clientHeight;
       for (const l of labels) {
-        if (l.lines.length && time > l.nextSay) {
+        const playerDist = Math.hypot(l.obj.position.x - pos.x, l.obj.position.z - pos.z);
+        if (l.lines.length && playerDist < 10 && time > l.nextSay) {
           l.bubble.textContent = l.lines[Math.floor(Math.random() * l.lines.length)];
           l.bubble.dataset.show = 'true';
-          l.hideAt = time + 4;
-          l.nextSay = time + 7 + Math.random() * 9;
+          l.hideAt = time + 3.5;
+          l.nextSay = time + 10 + Math.random() * 10;
         }
-        if (l.hideAt && time > l.hideAt) {
+        if ((l.hideAt && time > l.hideAt) || playerDist >= 10) {
           l.bubble.dataset.show = 'false';
           l.hideAt = 0;
         }
         tmpV.set(l.obj.position.x, l.height + 0.2, l.obj.position.z);
         const dist = tmpV.distanceTo(camera.position);
         tmpV.project(camera);
-        if (tmpV.z > 1 || dist > 34) {
+        if (tmpV.z > 1 || dist > 26 || playerDist > 18) {
           l.el.style.display = 'none';
         } else {
           l.el.style.display = 'flex';
-          l.el.style.opacity = String(THREE.MathUtils.clamp(1.4 - dist / 28, 0.25, 1));
+          l.el.style.opacity = String(THREE.MathUtils.clamp(1.3 - playerDist / 18, 0.3, 1));
           l.el.style.transform = `translate(${(tmpV.x * 0.5 + 0.5) * w}px, ${(-tmpV.y * 0.5 + 0.5) * h}px) translate(-50%, -100%)`;
         }
       }
-      void playerLabel;
 
       // --- minimap ---
       if (mapCtx && time - lastMap > 0.1) {
@@ -627,6 +718,8 @@ export const LagosWorld: React.FC = () => {
         mapCtx.fillRect(0, 0, MAP_W, MAP_H);
         mapCtx.fillStyle = '#6b5a3a';
         mapCtx.fillRect(mx(-16), mz(-12), mx(16) - mx(-16), mz(6) - mz(-12));
+        mapCtx.fillStyle = '#16a34a';
+        mapCtx.fillRect(mx(-30), mz(-8.5), mx(-19) - mx(-30), mz(4.5) - mz(-8.5));
         mapCtx.fillStyle = '#2a2c32';
         mapCtx.fillRect(0, mz(10.5), MAP_W, mz(17.5) - mz(10.5));
         mapCtx.fillStyle = '#38bdf8';
@@ -662,11 +755,15 @@ export const LagosWorld: React.FC = () => {
     animate();
 
     return () => {
+      weatherActive = false;
+      clearInterval(weatherInterval);
       cancelAnimationFrame(raf);
       unsub();
       container.removeEventListener('contextmenu', blockMenu);
       window.removeEventListener('orientationchange', resize);
       window.removeEventListener('resize', resize);
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       el.removeEventListener('pointerdown', onDown);
@@ -676,6 +773,8 @@ export const LagosWorld: React.FC = () => {
       el.removeEventListener('wheel', onWheel);
       if (toastTimer.current) clearTimeout(toastTimer.current);
       labels.forEach((l) => l.el.remove());
+      rainGeo.dispose();
+      rainMat.dispose();
       playerChar.dispose();
       world.dispose();
       renderer.dispose();
@@ -712,7 +811,7 @@ export const LagosWorld: React.FC = () => {
       <div ref={labelsRef} className="absolute inset-0 overflow-hidden pointer-events-none" />
 
       {/* Minimap */}
-      <div className="kw-glass absolute right-3 top-[76px] p-1.5 pointer-events-none hidden sm:block">
+      <div className="kw-glass absolute right-3 top-[88px] p-1.5 pointer-events-none hidden sm:block">
         <div className="kw-label px-1 pb-1">Lagos Mainland</div>
         <canvas ref={minimapRef} width={MAP_W} height={MAP_H} className="rounded-lg block" style={{ width: MAP_W, height: MAP_H }} />
       </div>
@@ -724,12 +823,14 @@ export const LagosWorld: React.FC = () => {
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 84px)' }}
         >
           <span>🚌 Riding Danfo to {ride.label}...</span>
-          <span className="font-mono text-kw-gold-soft">{Math.round(ride.progress * 100)}%</span>
+          <span className="font-mono text-kw-gold-soft">
+            {Math.max(0, Math.round(Math.abs(STOP_X[ride.to] - STOP_X[ride.from]) * (1 - ride.progress)))}m left
+          </span>
           <button
             onClick={() => updateRide(1)}
             className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] cursor-pointer"
           >
-            Arrive Now
+            Skip Ride
           </button>
         </div>
       )}
