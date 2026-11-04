@@ -32,6 +32,21 @@ export const metadata: Metadata = {
   title: "Ile-Kewu Life | Nigerian Arabic School Simulator",
   description: "The viral Nigerian life simulation game set in traditional Arabic & Quranic schools (Ile-Kewu). Start from the wooden slate (Walaah) and rise to a revered Sheikh!",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Ile-Kewu",
+  },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({
