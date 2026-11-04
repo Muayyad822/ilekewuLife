@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Baloo_2 } from "next/font/google";
 import "./globals.css";
+import { RegisterSW } from "./RegisterSW";
 
 const display = Baloo_2({
   variable: "--font-display",
@@ -30,6 +31,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Ile-Kewu Life | Nigerian Arabic School Simulator",
   description: "The viral Nigerian life simulation game set in traditional Arabic & Quranic schools (Ile-Kewu). Start from the wooden slate (Walaah) and rise to a revered Sheikh!",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -43,6 +45,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
       <body className="h-full overflow-hidden bg-kw-ink text-kw-cream font-sans">
+        <RegisterSW />
         {children}
       </body>
     </html>
