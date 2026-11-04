@@ -372,9 +372,18 @@ export const LagosWorld: React.FC = () => {
     emoteRef.current = () => {
       emoteUntil = time + 2.5;
     };
-    const unlockAudio = () => sound.startBgNasheed();
-    window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
+    const unlockAudio = () => {
+      sound.startBgNasheed();
+      // Only remove listeners if audio actually started playing
+      if (sound.isPlaying()) {
+        window.removeEventListener('pointerdown', unlockAudio);
+        window.removeEventListener('touchstart', unlockAudio);
+        window.removeEventListener('keydown', unlockAudio);
+      }
+    };
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       const k = e.key.toLowerCase();
@@ -793,6 +802,7 @@ export const LagosWorld: React.FC = () => {
       window.removeEventListener('orientationchange', resize);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);

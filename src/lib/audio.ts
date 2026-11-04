@@ -26,12 +26,16 @@ class SoundEngine {
     }
   }
 
+  public isPlaying(): boolean {
+    return Boolean(this.htmlAudio && !this.htmlAudio.paused && !this.htmlAudio.ended);
+  }
+
   public setMuted(muted: boolean) {
     this.isMuted = muted;
     if (muted) {
       if (this.htmlAudio) this.htmlAudio.pause();
-    } else if (this.bgStarted && this.htmlAudio) {
-      this.htmlAudio.play().catch(() => {});
+    } else {
+      this.startBgNasheed();
     }
   }
 
@@ -44,18 +48,26 @@ class SoundEngine {
    */
   public startBgNasheed() {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
-    if (!this.bgStarted) {
-      this.bgStarted = true;
+    this.initContext();
+
+    if (!this.htmlAudio) {
       if (NASHEED_SOURCES.length === 0) return;
       const audio = new Audio(NASHEED_SOURCES[0]);
       audio.loop = true;
       audio.volume = 0.12;
       this.htmlAudio = audio;
-      if (!this.isMuted) {
-        audio.play().catch(() => {});
+    }
+
+    this.bgStarted = true;
+
+    if (!this.isMuted) {
+      const p = this.htmlAudio.play();
+      if (p !== undefined) {
+        p.catch(() => {
+          // Playback rejected (e.g., user hasn't interacted or browser blocked)
+          // We keep bgStarted true so any subsequent tap automatically retries
+        });
       }
-    } else if (!this.isMuted && this.htmlAudio) {
-      this.htmlAudio.play().catch(() => {});
     }
   }
 
