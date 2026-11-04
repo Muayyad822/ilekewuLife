@@ -54,10 +54,10 @@ const shortestAngle = (from: number, to: number) => {
 };
 
 const MAP_W = 168;
-const MAP_H = 80;
+const MAP_H = 100;
 const X_MIN = -255;
 const X_MAX = 255;
-const Z_MIN = -12;
+const Z_MIN = -27;
 const Z_MAX = 26;
 const STOP_X = { school: 24, east: 220, west: -220 } as const;
 
@@ -89,9 +89,11 @@ export const LagosWorld: React.FC = () => {
     };
 
     const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    if (coarse) {
-      setToast('Assalamu alaikum! Use the joystick to walk (push to the edge to run). Drag to look, pinch to zoom. Tap the gold button to interact.');
-    }
+    const coarseToast = coarse
+      ? setTimeout(() => {
+          setToast('Assalamu alaikum! Use the joystick to walk (push to the edge to run). Drag to look, pinch to zoom. Tap the gold button to interact.');
+        }, 0)
+      : null;
 
     // ---------- Renderer / scene / camera ----------
     const scene = new THREE.Scene();
@@ -224,7 +226,7 @@ export const LagosWorld: React.FC = () => {
       labels.push(l);
       return l;
     };
-    const KEY_NPCS = new Set(['alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan']);
+    const KEY_NPCS = new Set(['alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan', 'zainab', 'baba_ayo']);
     world.npcs.forEach((n) => {
       if (!KEY_NPCS.has(n.id)) return;
       const sitting = n.idlePose === 'recite' || n.idlePose === 'alfa' || n.idlePose === 'sit';
@@ -327,6 +329,31 @@ export const LagosWorld: React.FC = () => {
         id: 'football', name: 'Kewu F.C. Table Soccer Pitch', arabic: 'مَلْعَبُ كُرَةِ الْقَدَمِ', x: -24.5, z: 3.5, radius: 5.8,
         action: 'Play Ping-Pong Football (Win ₦500–₦1,200)',
         onInteract: () => { st().setActivity('football'); },
+      },
+      {
+        id: 'tenten', name: 'Tinko-Tinko Court', arabic: 'لُعْبَةُ التَّصْفِيق', x: -34, z: -13.5, radius: 3.4,
+        action: 'Play Tinko-Tinko Duel (Win ₦600)',
+        onInteract: () => { st().setActivity('tenten'); },
+      },
+      {
+        id: 'suwe', name: 'Suwe Hopscotch Grid', arabic: 'لُعْبَةُ القَفْز', x: -24.5, z: -13, radius: 3.6,
+        action: 'Play Suwe Hopscotch (Win up to ₦540)',
+        onInteract: () => { st().setActivity('suwe'); },
+      },
+      {
+        id: 'ayo', name: 'Ayo Olopon Bench', arabic: 'لُعْبَةُ الأَيُو', x: -34, z: -20, radius: 2.8,
+        action: 'Play Ayo Olopon with Baba Ayo (Win ₦800)',
+        onInteract: () => { st().setActivity('ayo'); },
+      },
+      {
+        id: 'skipping', name: 'Skipping Rope Spot', arabic: 'نَطُّ الحَبْل', x: -26, z: -19.5, radius: 2.6,
+        action: 'Skip Rope (Win up to ₦700)',
+        onInteract: () => { st().setActivity('skipping'); },
+      },
+      {
+        id: 'catcher', name: 'Boju-Boju Arena', arabic: 'لُعْبَةُ المُطَارَدَة', x: -22, z: -23.5, radius: 3.4,
+        action: 'Play Boju-Boju Dodge & Collect (Win up to ₦700)',
+        onInteract: () => { st().setActivity('catcher'); },
       },
     ];
     let nearZone: Zone | null = null;
@@ -720,6 +747,8 @@ export const LagosWorld: React.FC = () => {
         mapCtx.fillRect(mx(-16), mz(-12), mx(16) - mx(-16), mz(6) - mz(-12));
         mapCtx.fillStyle = '#16a34a';
         mapCtx.fillRect(mx(-30), mz(-8.5), mx(-19) - mx(-30), mz(4.5) - mz(-8.5));
+        mapCtx.fillStyle = '#8a6a3a';
+        mapCtx.fillRect(mx(-39.5), mz(-26), mx(-15.5) - mx(-39.5), mz(-11) - mz(-26));
         mapCtx.fillStyle = '#2a2c32';
         mapCtx.fillRect(0, mz(10.5), MAP_W, mz(17.5) - mz(10.5));
         mapCtx.fillStyle = '#38bdf8';
@@ -756,6 +785,7 @@ export const LagosWorld: React.FC = () => {
 
     return () => {
       weatherActive = false;
+      if (coarseToast) clearTimeout(coarseToast);
       clearInterval(weatherInterval);
       cancelAnimationFrame(raf);
       unsub();

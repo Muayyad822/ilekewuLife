@@ -384,7 +384,7 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
           ref={canvasRef}
           width={W}
           height={H}
-          style={{ width: 'min(84vw, 340px)', height: 'auto', touchAction: 'none' }}
+          style={{ width: 'min(84vw, 340px, calc(50dvh * 0.7826))', height: 'auto', aspectRatio: '360 / 460', touchAction: 'none' }}
           className="block cursor-ew-resize"
           onPointerDown={handlePointer}
           onPointerMove={handlePointer}

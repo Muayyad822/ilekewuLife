@@ -66,12 +66,17 @@ export const TopRightHud: React.FC = () => {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    setHour(realHourNow());
+    const first = setTimeout(() => {
+      setMounted(true);
+      setHour(realHourNow());
+    }, 0);
     const id = setInterval(() => {
       setHour(realHourNow());
     }, 10000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [setHour]);
 
   const displayHour = mounted ? hour : 7;

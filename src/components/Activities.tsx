@@ -13,6 +13,7 @@ import {
 import { prayerFor } from '@/lib/time';
 import { sound } from '@/lib/audio';
 import { FootballMinigame } from '@/components/FootballMinigame';
+import { TenTenGame, SuweGame, AyoGame, SkippingGame, CatcherGame } from '@/components/RecreationGames';
 import { CheckCircle2, XCircle, Lock, Bus, Sparkles, BookOpen, ShoppingBag, Volume2 } from 'lucide-react';
 
 // ============================================================================
@@ -565,11 +566,13 @@ export const ActivityModal: React.FC = () => {
     activity, setActivity, owned, reward, washWalaahSuccess, slateTraced,
     hour, triggerRally,
   } = useGameStore();
-  const [subPhase, setSubPhase] = useState<'seq' | 'mcq'>('seq');
-
-  useEffect(() => {
-    setSubPhase('seq');
-  }, [activity]);
+  // Sub-phase is keyed to the activity it belongs to, so it resets automatically when the activity changes
+  const [phaseState, setPhaseState] = useState<{ forActivity: typeof activity; phase: 'seq' | 'mcq' }>({
+    forActivity: null,
+    phase: 'seq',
+  });
+  const subPhase = phaseState.forActivity === activity ? phaseState.phase : 'seq';
+  const setSubPhase = (phase: 'seq' | 'mcq') => setPhaseState({ forActivity: activity, phase });
 
   if (!activity) return null;
 
@@ -840,6 +843,21 @@ export const ActivityModal: React.FC = () => {
   } else if (activity === 'football') {
     title = 'Kewu F.C. — Ping-Pong Table Soccer';
     body = <FootballMinigame onClose={close} />;
+  } else if (activity === 'tenten') {
+    title = 'Tinko-Tinko — Foot-Clapping Duel';
+    body = <TenTenGame onClose={close} />;
+  } else if (activity === 'suwe') {
+    title = 'Suwe — Nigerian Hopscotch';
+    body = <SuweGame onClose={close} />;
+  } else if (activity === 'ayo') {
+    title = 'Ayo Olopon — Yoruba Mancala';
+    body = <AyoGame onClose={close} />;
+  } else if (activity === 'skipping') {
+    title = 'Skipping Rope — Okunuga';
+    body = <SkippingGame onClose={close} />;
+  } else if (activity === 'catcher') {
+    title = 'Boju-Boju — Dodge & Collect';
+    body = <CatcherGame onClose={close} />;
   }
 
   return (

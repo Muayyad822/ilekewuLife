@@ -365,6 +365,101 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     [75, 23], [115, 8.3], [155, 23], [195, 8.3],
   ].forEach(([x, z]) => tree(x, z));
 
+  // ===================== RECREATION GROUND: TRADITIONAL PLAYGROUND GAMES =====================
+  // Swept earth patch north of the pitch where all the chalked games are laid out
+  strip(-27.5, -18.5, 24, 15, 0xd8b07a, 0.015);
+
+  const chalk = (cx: number, cz: number, w: number, d: number) => box(scene, w, 0.02, d, 0xffffff, cx, 0.035, cz, { cast: false });
+  const chalkRect = (cx: number, cz: number, w: number, d: number, t = 0.08) => {
+    chalk(cx, cz - d / 2, w, t);
+    chalk(cx, cz + d / 2, w, t);
+    chalk(cx - w / 2, cz, t, d);
+    chalk(cx + w / 2, cz, t, d);
+  };
+  const signPost = (x: number, z: number, text: string, bg: string, fg = '#fff6e0') => {
+    cyl(scene, 0.06, 0.06, 1.7, 0x6d4c41, x - 1.0, 0.85, z, 6);
+    cyl(scene, 0.06, 0.06, 1.7, 0x6d4c41, x + 1.0, 0.85, z, 6);
+    sign(scene, text, 2.3, 0.45, bg, fg, x, 1.5, z + 0.05);
+  };
+  const floorLabel = (text: string, x: number, z: number, w = 0.7) => {
+    const s = makeSign(text, w, w, '#d8b07a', '#7c2d12');
+    s.rotation.x = -Math.PI / 2;
+    s.position.set(x, 0.045, z);
+    scene.add(s);
+    extras.push(s);
+  };
+
+  // --- Tinko-Tinko court ---
+  chalkRect(-34, -13.5, 6, 4);
+  chalk(-34, -13.5, 0.08, 4);
+  for (const fx of [-35.6, -32.4]) {
+    box(scene, 0.22, 0.02, 0.5, 0xffffff, fx, 0.036, -13.5, { cast: false });
+    box(scene, 0.22, 0.02, 0.5, 0xffffff, fx + (fx < -34 ? 0.4 : -0.4), 0.036, -13.5, { cast: false });
+  }
+  signPost(-34, -11.3, 'TINKO-TINKO', '#be185d');
+
+  // --- Suwe (hopscotch) grid ---
+  for (let i = 0; i < 6; i++) {
+    const bx = -27.0 + i * 1.0;
+    chalkRect(bx, -13, 1.0, 1.0, 0.07);
+    floorLabel(String(i + 1), bx, -13);
+  }
+  const homeArc = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.18, 20, 1, 0, Math.PI), mat(0xffffff, 0.9));
+  homeArc.rotation.x = -Math.PI / 2;
+  homeArc.rotation.z = -Math.PI / 2;
+  homeArc.position.set(-21.5, 0.036, -13);
+  scene.add(homeArc);
+  box(scene, 0.3, 0.12, 0.26, 0x78716c, -24.0, 0.07, -13);
+  signPost(-24.5, -11.4, 'SUWE', '#c2410c');
+
+  // --- Ayo Olopon bench under a shade tree ---
+  const ayoBench = new THREE.Group();
+  box(ayoBench, 2.4, 0.14, 0.8, 0x6d4c41, 0, 0.5, 0);
+  for (const lx of [-1.0, 1.0]) for (const lz of [-0.3, 0.3]) cyl(ayoBench, 0.06, 0.06, 0.5, 0x4e342e, lx, 0.25, lz, 6);
+  box(ayoBench, 1.7, 0.16, 0.66, 0x8d5a2b, 0, 0.66, 0);
+  for (let c = 0; c < 6; c++) {
+    for (const rz of [-0.14, 0.14]) cyl(ayoBench, 0.1, 0.1, 0.03, 0x2b1a0e, -0.67 + c * 0.27, 0.75, rz, 10);
+  }
+  place(ayoBench, -34, 0, -20);
+  solid(-34, -20, 1.25, 0.5);
+  tree(-37.4, -21, 1.15);
+  signPost(-34, -18.4, 'AYO OLOPON', '#78350f');
+
+  // --- Skipping rope ---
+  const ropeCurve = new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(-28.2, 0.9, -19.5),
+    new THREE.Vector3(-26, -0.5, -19.5),
+    new THREE.Vector3(-23.8, 0.9, -19.5),
+  );
+  const ropeLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(ropeCurve.getPoints(18)),
+    new THREE.LineBasicMaterial({ color: 0xdc2626 }),
+  );
+  scene.add(ropeLine);
+  extras.push(ropeLine);
+  const jumpMark = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 18), mat(0xffffff, 0.9));
+  jumpMark.rotation.x = -Math.PI / 2;
+  jumpMark.position.set(-26, 0.036, -19.5);
+  scene.add(jumpMark);
+  signPost(-26, -17.7, 'SKIPPING ROPE', '#7c3aed');
+
+  // --- Boju-Boju dodge arena ---
+  const arenaRing = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.05, 32), mat(0xffffff, 0.9));
+  arenaRing.rotation.x = -Math.PI / 2;
+  arenaRing.position.set(-22, 0.036, -23.5);
+  scene.add(arenaRing);
+  for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3]]) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 8), mat(0xf97316, 0.7));
+    cone.position.set(-22 + dx, 0.25, -23.5 + dz);
+    cone.castShadow = true;
+    scene.add(cone);
+  }
+  const dodgeBall = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 10), mat(0xdc2626, 0.5));
+  dodgeBall.position.set(-22.6, 0.27, -23.2);
+  dodgeBall.castShadow = true;
+  scene.add(dodgeBall);
+  signPost(-18.4, -21.4, 'BOJU-BOJU', '#15803d');
+
   // ===================== NEPA POLES, CABLES & LAMPS =====================
   const poleTops: THREE.Vector3[] = [];
   for (let x = -240; x <= 240; x += 16) {
@@ -655,6 +750,21 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   addNPC('ridwan', 'Ridwan', 'Kewu FC Captain', -21.2, 5.2, 0, 'wave',
     { robe: 0x16a34a, trim: 0xffc61a, cap: 'kofia', capColor: 0xffffff, skin: 0x4a2c17 },
     ['Oya! 1-on-1 Ping-Pong Football!', 'First to 3 goals wins the street cup!', 'No hands o, test your reflexes!']);
+  addNPC('zainab', 'Zainab', 'Tinko-Tinko Champ', -35.2, -13.5, Math.PI / 2, 'wave',
+    { robe: 0xec4899, trim: 0xffffff, cap: 'hijab', capColor: 0xfbcfe8, female: true, skin: 0x5d3a1a, scale: 0.85 },
+    ['Tinko, Tinko, Tinko-Tinko!', 'Left foot or right foot? Come and play!']);
+  addNPC('halimah', 'Halimah', 'Classmate', -32.8, -13.5, -Math.PI / 2, 'wave',
+    { robe: 0x14b8a6, trim: 0xffffff, cap: 'hijab', capColor: 0xccfbf1, female: true, skin: 0x7a4a24, scale: 0.85 },
+    ['Clap! Clap!']);
+  addNPC('rope1', 'Maryam', 'Rope Holder', -28.2, -19.5, Math.PI / 2, 'idle',
+    { robe: 0x8b5cf6, trim: 0xffffff, cap: 'hijab', capColor: 0xede9fe, female: true, skin: 0x4a2c17, scale: 0.85 },
+    ['Jump, jump!']);
+  addNPC('rope2', 'Khadijah', 'Rope Holder', -23.8, -19.5, -Math.PI / 2, 'idle',
+    { robe: 0xf59e0b, trim: 0xffffff, cap: 'hijab', capColor: 0xfef3c7, female: true, skin: 0x7a4a24, scale: 0.85 },
+    ['Faster!']);
+  addNPC('baba_ayo', 'Baba Ayo', 'Ayo Master', -32.4, -20, -Math.PI / 2, 'idle',
+    { robe: 0xf5f5dc, trim: 0x92400e, cap: 'fila', capColor: 0x7c2d12, beard: 0xdddddd, skin: 0x4a2c17 },
+    ['Ayo is the game of wisdom. Sit and play!', 'Count your seeds well, my child.']);
 
   const dispose = () => {
     npcs.forEach((n) => n.char.dispose());
