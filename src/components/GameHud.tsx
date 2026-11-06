@@ -119,10 +119,10 @@ export const TopLeftHud: React.FC = () => {
     <div
       onClick={() => setActiveTab('profile')}
       title="Open Scholar Profile & Real Estate"
-      className="kw-glass kw-safe-top kw-safe-left absolute px-2.5 sm:px-3 py-2 flex flex-col gap-1.5 w-[min(46vw,240px)] cursor-pointer hover:border-amber-400/40 transition"
+      className="kw-glass pointer-events-auto px-2 sm:px-3 py-1.5 sm:py-2 flex flex-col gap-1 sm:gap-1.5 min-w-0 shrink-0 max-w-[42%] sm:max-w-[270px] cursor-pointer hover:border-amber-400/40 transition"
     >
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-b from-kw-gold-soft to-kw-gold flex items-center justify-center text-lg shadow-inner overflow-hidden shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+        <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-linear-to-b from-kw-gold-soft to-kw-gold flex items-center justify-center text-xs sm:text-base shadow-inner overflow-hidden shrink-0">
           {player.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={player.avatarUrl} alt={player.name} className="w-full h-full object-cover" />
@@ -130,23 +130,22 @@ export const TopLeftHud: React.FC = () => {
             stage.emoji
           )}
         </div>
-        <div className="min-w-0 leading-tight">
-          <div className="kw-display text-[13.5px] sm:text-[15px] font-extrabold truncate">{player.name}</div>
-          <div className="text-[10px] sm:text-[10.5px] text-kw-gold-soft font-semibold truncate">
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="kw-display text-[11.5px] sm:text-[14px] font-extrabold truncate">{player.name}</div>
+          <div className="text-[9px] sm:text-[10px] text-kw-gold-soft font-semibold truncate">
             {stage.title}
           </div>
         </div>
-        <div className="ml-auto pl-1.5 text-right shrink-0">
-          <div className="kw-label text-[9px]">Naira</div>
-          <div className="text-[11.5px] sm:text-[13px] font-extrabold font-mono text-emerald-300">
+        <div className="pl-0.5 sm:pl-1 text-right shrink-0">
+          <div className="text-[11px] sm:text-[13px] font-extrabold font-mono text-emerald-300 leading-tight">
             ₦{s.naira.toLocaleString()}
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2 pt-0.5">
-        <Meter icon={<BookOpen className="w-3 h-3" />} value={s.ilm} color="#60a5fa" label="Ilm" />
-        <Meter icon={<Heart className="w-3 h-3" />} value={s.taqwa} color="#34d399" label="Taqwa" />
-        <Meter icon={<Zap className="w-3 h-3" />} value={s.energy} color="#fbbf24" label="Energy" />
+      <div className="grid grid-cols-3 gap-1 sm:gap-2 pt-0.5">
+        <Meter icon={<BookOpen className="w-2.5 h-2.5 sm:w-3 sm:h-3" />} value={s.ilm} color="#60a5fa" label="Ilm" />
+        <Meter icon={<Heart className="w-2.5 h-2.5 sm:w-3 sm:h-3" />} value={s.taqwa} color="#34d399" label="Taqwa" />
+        <Meter icon={<Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />} value={s.energy} color="#fbbf24" label="Energy" />
       </div>
     </div>
   );
@@ -179,48 +178,57 @@ export const TopRightHud: React.FC = () => {
   const displayHour = mounted ? hour : 7;
   const prayer = prayerFor(displayHour, solatTimings);
   return (
-    <div className="kw-glass kw-safe-top kw-safe-right absolute px-2.5 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-3 max-w-[52vw] sm:max-w-none">
-      <div className="text-right leading-tight min-w-0">
-        <div className="kw-display text-[12.5px] sm:text-[14.5px] font-extrabold flex items-center justify-end gap-1 sm:gap-1.5 truncate">
+    <div className="kw-glass pointer-events-auto px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-2.5 min-w-0 flex-1 sm:flex-initial sm:max-w-fit ml-auto">
+      <div className="text-right leading-tight min-w-0 flex-1">
+        <div className="kw-display text-[11px] sm:text-[14px] font-extrabold flex items-center justify-end gap-1 truncate">
           <span>{prayer.icon}</span>
           <span className="truncate">{prayer.name}</span>
           <span dir="rtl" className="font-serif text-kw-gold-soft text-xs sm:text-sm shrink-0">
             {prayer.arabic}
           </span>
         </div>
-        <div className="text-[9.5px] sm:text-[10.5px] text-kw-cream-dim font-mono flex items-center justify-end gap-1 mt-0.5 truncate">
-          <span className="text-white font-bold">{mounted ? formatHour(displayHour) : '--:--'}</span>
+        <div className="text-[8.5px] sm:text-[10.5px] text-kw-cream-dim font-mono flex items-center justify-end gap-1 mt-0.5 truncate">
+          <span className="text-white font-bold shrink-0">{mounted ? formatHour(displayHour) : '--:--'}</span>
           <span className="text-kw-gold-soft truncate">
             · Next {prayer.nextName} {prayer.nextTimeStr}
           </span>
         </div>
-        <div className="text-[9px] sm:text-[10px] text-sky-300 font-semibold flex items-center justify-end gap-1 mt-0.5 truncate">
-          <span>{weather.icon}</span>
-          <span className="font-mono font-bold">{weather.tempC}°C</span>
+        <div className="text-[8px] sm:text-[9.5px] text-sky-300 font-semibold flex items-center justify-end gap-1 mt-0.5 truncate">
+          <span className="shrink-0">{weather.icon}</span>
+          <span className="font-mono font-bold shrink-0">{weather.tempC}°C</span>
           <span className="truncate">· {weather.label}</span>
         </div>
       </div>
-      <div className="flex items-center gap-0.5 sm:gap-1 border-l border-white/10 pl-1.5 sm:pl-2 shrink-0">
+      <div className="flex items-center gap-0.5 sm:gap-1 border-l border-white/10 pl-1 sm:pl-1.5 shrink-0">
         <button
           onClick={toggleMute}
-          className="p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
+          className="p-1 sm:p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
           title={isMuted ? 'Unmute' : 'Mute'}
           aria-label={isMuted ? 'Unmute' : 'Mute'}
         >
-          {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+          {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={() => {
             if (confirm('Start a new life journey in Ile-Kewu? Your local stats will reset.')) resetGame();
           }}
-          className="hidden sm:block p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
+          className="hidden sm:block p-1 sm:p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
           title="Restart life"
           aria-label="Restart life"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
+  );
+};
+
+export const TopHud: React.FC = () => {
+  return (
+    <header className="kw-safe-top absolute inset-x-2 sm:inset-x-3.5 flex items-start justify-between gap-1.5 sm:gap-3 pointer-events-none z-10">
+      <TopLeftHud />
+      <TopRightHud />
+    </header>
   );
 };
 

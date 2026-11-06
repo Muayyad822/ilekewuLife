@@ -104,7 +104,14 @@ export const LagosWorld: React.FC = () => {
     let coarseToast: ReturnType<typeof setTimeout> | null = null;
 
     // Show walkthrough hint only once for first-time players
-    const isFirstTimer = typeof window !== 'undefined' && !localStorage.getItem('ilekewu_tutorial_seen');
+    const currentSnapshot = useGameStore.getState().player;
+    const isFirstTimer =
+      typeof window !== 'undefined' &&
+      !localStorage.getItem('ilekewu_tutorial_seen') &&
+      currentSnapshot.stage === 'omo_kewu' &&
+      currentSnapshot.hifzJuz <= 1 &&
+      currentSnapshot.stats.ilm <= 50;
+
     if (isFirstTimer) {
       setToast(
         coarse
@@ -115,6 +122,11 @@ export const LagosWorld: React.FC = () => {
         localStorage.setItem('ilekewu_tutorial_seen', 'true');
       } catch {}
       coarseToast = setTimeout(() => setToast(null), 5000);
+    } else if (typeof window !== 'undefined' && !localStorage.getItem('ilekewu_tutorial_seen')) {
+      // Mark as seen for returning players without showing the banner
+      try {
+        localStorage.setItem('ilekewu_tutorial_seen', 'true');
+      } catch {}
     }
 
     // ---------- Renderer / scene / camera ----------
