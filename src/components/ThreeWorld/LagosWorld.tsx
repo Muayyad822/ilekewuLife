@@ -18,6 +18,7 @@ interface Zone {
   radius: number;
   action: string;
   isAvailable?: () => boolean;
+  getPos?: () => { x: number; z: number };
   onInteract: () => string | void;
 }
 
@@ -64,6 +65,16 @@ const STOP_X = { school: 24, east: 220, west: -220 } as const;
 
 export const LagosWorld: React.FC = () => {
   const { ride, errand, updateRide } = useGameStore();
+  const mount = useGameStore((s) => s.mount);
+  const setMount = useGameStore((s) => s.setMount);
+  const housing = useGameStore((s) => s.housing);
+  const activeTab = useGameStore((s) => s.activeTab);
+  const roomOverlay = useGameStore((s) => s.roomOverlay);
+  const setRoomOverlay = useGameStore((s) => s.setRoomOverlay);
+  const selectedFurniture = useGameStore((s) => s.selectedFurniture || 'desk');
+  const setSelectedFurniture = useGameStore((s) => s.setSelectedFurniture);
+  const updateFurnitureTransform = useGameStore((s) => s.updateFurnitureTransform);
+  const resetFurnitureLayout = useGameStore((s) => s.resetFurnitureLayout);
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
@@ -75,9 +86,7 @@ export const LagosWorld: React.FC = () => {
 
   const [activePose, setActivePose] = useState<Pose>('idle');
   const [nearby, setNearby] = useState<{ name: string; arabic: string; action: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(
-    'Arrow Keys / Joystick to walk · Drag to look · Press E to interact.',
-  );
+  const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -92,11 +101,21 @@ export const LagosWorld: React.FC = () => {
     };
 
     const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    const coarseToast = coarse
-      ? setTimeout(() => {
-          setToast('Joystick to walk · Drag to look · Tap interact button.');
-        }, 0)
-      : null;
+    let coarseToast: ReturnType<typeof setTimeout> | null = null;
+
+    // Show walkthrough hint only once for first-time players
+    const isFirstTimer = typeof window !== 'undefined' && !localStorage.getItem('ilekewu_tutorial_seen');
+    if (isFirstTimer) {
+      setToast(
+        coarse
+          ? 'Joystick to walk · Drag to look · Tap interact button.'
+          : 'Arrow Keys / Joystick to walk · Drag to look · Press E to interact.'
+      );
+      try {
+        localStorage.setItem('ilekewu_tutorial_seen', 'true');
+      } catch {}
+      coarseToast = setTimeout(() => setToast(null), 5000);
+    }
 
     // ---------- Renderer / scene / camera ----------
     const scene = new THREE.Scene();
@@ -201,6 +220,98 @@ export const LagosWorld: React.FC = () => {
     playerChar.group.position.set(pos.x, 0, pos.z);
     let lastOutfitRev = useGameStore.getState().outfitRevision;
 
+    // Ridden Vehicle Mount Models (attached under the player character)
+    const riderMountRoot = new THREE.Group();
+    playerChar.group.add(riderMountRoot);
+
+    const bChromeMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.25, metalness: 0.7 });
+    const bFrameMat = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.45, metalness: 0.3 });
+
+    // 1. Ridden Raleigh Bicycle (asset_bicycle)
+    const riderBike = new THREE.Group();
+    riderBike.visible = false;
+    const bikeWheels: THREE.Group[] = [];
+    for (const wz of [-0.62, 0.62]) {
+      const wP = new THREE.Group();
+      wP.position.set(0, 0.34, wz);
+      const wheel = new THREE.Mesh(
+        new THREE.TorusGeometry(0.32, 0.04, 8, 18),
+        new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 })
+      );
+      wheel.rotation.y = Math.PI / 2;
+      wheel.castShadow = true;
+      wP.add(wheel);
+      riderBike.add(wP);
+      bikeWheels.push(wP);
+    }
+    const bBar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.95), bFrameMat);
+    bBar.position.set(0, 0.65, 0);
+    riderBike.add(bBar);
+    const bDown = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72), bFrameMat);
+    bDown.rotation.x = 0.5;
+    bDown.position.set(0, 0.5, 0.12);
+    riderBike.add(bDown);
+    const bFork = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75), bChromeMat);
+    bFork.position.set(0, 0.62, 0.52);
+    riderBike.add(bFork);
+    const bBars = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.06), bChromeMat);
+    bBars.position.set(0, 0.98, 0.52);
+    riderBike.add(bBars);
+    for (const gx of [-0.26, 0.26]) {
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+      grip.rotation.z = Math.PI / 2;
+      grip.position.set(gx, 0.98, 0.52);
+      riderBike.add(grip);
+    }
+    const bSaddle = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0x27272a }));
+    bSaddle.position.set(0, 0.8, -0.36);
+    riderBike.add(bSaddle);
+    riderMountRoot.add(riderBike);
+
+    // 2. Ridden Bajaj Boxer Motorcycle (asset_okada)
+    const riderMoto = new THREE.Group();
+    riderMoto.visible = false;
+    const motoWheels: THREE.Group[] = [];
+    for (const wz of [-0.72, 0.72]) {
+      const wP = new THREE.Group();
+      wP.position.set(0, 0.38, wz);
+      const tire = new THREE.Mesh(
+        new THREE.TorusGeometry(0.36, 0.09, 10, 18),
+        new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 })
+      );
+      tire.rotation.y = Math.PI / 2;
+      tire.castShadow = true;
+      wP.add(tire);
+      riderMoto.add(wP);
+      motoWheels.push(wP);
+    }
+    const mTank = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.68), new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.4, roughness: 0.3 }));
+    mTank.position.set(0, 0.82, 0.15);
+    riderMoto.add(mTank);
+    const mSeat = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.78), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+    mSeat.position.set(0, 0.76, -0.42);
+    riderMoto.add(mSeat);
+    const mEngine = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.45), new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.5 }));
+    mEngine.position.set(0, 0.48, 0.05);
+    riderMoto.add(mEngine);
+    const mExhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.85), bChromeMat);
+    mExhaust.rotation.x = Math.PI / 2 - 0.1;
+    mExhaust.position.set(0.18, 0.32, -0.42);
+    riderMoto.add(mExhaust);
+    const mFork = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.75), bChromeMat);
+    mFork.position.set(0, 0.72, 0.55);
+    riderMoto.add(mFork);
+    const mBars = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.06, 0.08), bChromeMat);
+    mBars.position.set(0, 1.05, 0.52);
+    riderMoto.add(mBars);
+    const mHeadlight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.13, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 1.4 })
+    );
+    mHeadlight.position.set(0, 0.94, 0.68);
+    riderMoto.add(mHeadlight);
+    riderMountRoot.add(riderMoto);
+
     // ---------- Name-plates ----------
     interface Label {
       el: HTMLDivElement;
@@ -241,7 +352,12 @@ export const LagosWorld: React.FC = () => {
     });
 
     // Initial sync of 3D room furniture/upgrades & house locks
-    world.syncUpgrades(useGameStore.getState().housing.upgrades);
+    world.syncUpgrades(
+      useGameStore.getState().housing.upgrades,
+      useGameStore.getState().housing.tier,
+      useGameStore.getState().housing.furnitureLayout,
+      useGameStore.getState().mount,
+    );
     world.syncHouseAccess(useGameStore.getState().housing.tier);
 
     // ---------- Zones ----------
@@ -258,6 +374,24 @@ export const LagosWorld: React.FC = () => {
     };
     setPoseActionRef.current = applyPose;
 
+    const getFurnitureTf = (
+      tierId: 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa',
+      key: string,
+      baseX: number,
+      baseZ: number,
+      baseRot = 0,
+    ) => {
+      const housing = st().housing;
+      if (housing.tier !== tierId) return { x: baseX, z: baseZ, rot: baseRot };
+      const tf = housing.furnitureLayout?.[key];
+      if (!tf) return { x: baseX, z: baseZ, rot: baseRot };
+      return {
+        x: baseX + (tf.dx || 0),
+        z: baseZ + (tf.dz || 0),
+        rot: baseRot + (tf.rot || 0),
+      };
+    };
+
     // Helper to generate 3D interactive furniture hotspots inside each of the 4 3D Houses
     const makeHouseZones = (
       tierId: 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa',
@@ -267,6 +401,7 @@ export const LagosWorld: React.FC = () => {
       rugPos: [number, number],
       wardrobePos: [number, number],
       furnishPos: [number, number],
+      bikePos: [number, number],
     ): Zone[] => {
       const canUse = () => st().housing.tier === tierId;
       return [
@@ -279,16 +414,18 @@ export const LagosWorld: React.FC = () => {
           radius: 2.2,
           action: 'Sleep & Rest',
           isAvailable: canUse,
+          getPos: () => getFurnitureTf(tierId, 'bed', bedPos[0], bedPos[1]),
           onInteract: () => {
+            const f = getFurnitureTf(tierId, 'bed', bedPos[0], bedPos[1], 0);
             const hasMattress = st().housing.upgrades.includes('asset_mattress');
             const bedY = tierId === 'ruwaq'
               ? (hasMattress ? 0.46 : 0.08)
               : tierId === 'shared_room' ? 0.46
               : tierId === 'mini_flat' ? 0.54
               : 0.60;
-            pos.x = bedPos[0];
-            pos.z = bedPos[1];
-            pos.rot = 0;
+            pos.x = f.x;
+            pos.z = f.z;
+            pos.rot = f.rot;
             applyPose('sleep', bedY);
             const res = st().restAtHome();
             return res.msg;
@@ -303,11 +440,21 @@ export const LagosWorld: React.FC = () => {
           radius: 2.1,
           action: 'Sit & Study',
           isAvailable: canUse,
+          getPos: () => {
+            const f = getFurnitureTf(tierId, 'desk', deskPos[0], deskPos[1], 0);
+            return {
+              x: f.x + 0.55 * Math.sin(f.rot),
+              z: f.z + 0.55 * Math.cos(f.rot),
+            };
+          },
           onInteract: () => {
             // Sit squarely on the study chair facing the desk
-            pos.x = deskPos[0];
-            pos.z = deskPos[1] + 0.68;
-            pos.rot = Math.PI;
+            const f = getFurnitureTf(tierId, 'desk', deskPos[0], deskPos[1], 0);
+            const sinR = Math.sin(f.rot);
+            const cosR = Math.cos(f.rot);
+            pos.x = f.x + 0.55 * sinR;
+            pos.z = f.z + 0.55 * cosR;
+            pos.rot = f.rot + Math.PI;
             applyPose('chair_sit', 0.46);
             return st().studyAtDesk();
           },
@@ -321,10 +468,12 @@ export const LagosWorld: React.FC = () => {
           radius: 2.0,
           action: 'Pray Salah',
           isAvailable: canUse,
+          getPos: () => getFurnitureTf(tierId, 'rug', rugPos[0], rugPos[1]),
           onInteract: () => {
-            pos.x = rugPos[0];
-            pos.z = rugPos[1] + 0.35;
-            pos.rot = Math.PI;
+            const f = getFurnitureTf(tierId, 'rug', rugPos[0], rugPos[1], 0);
+            pos.x = f.x;
+            pos.z = f.z;
+            pos.rot = f.rot + Math.PI;
             applyPose('pray', 0);
             return st().prayInRoom();
           },
@@ -338,12 +487,50 @@ export const LagosWorld: React.FC = () => {
           radius: 2.1,
           action: 'Change Robe',
           isAvailable: canUse,
+          getPos: () => {
+            const f = getFurnitureTf(tierId, 'wardrobe', wardrobePos[0], wardrobePos[1], 0);
+            return {
+              x: f.x + 0.85 * Math.sin(f.rot),
+              z: f.z + 0.85 * Math.cos(f.rot),
+            };
+          },
           onInteract: () => {
-            pos.x = wardrobePos[0];
-            pos.z = wardrobePos[1] + 1.1;
-            pos.rot = Math.PI;
+            const f = getFurnitureTf(tierId, 'wardrobe', wardrobePos[0], wardrobePos[1], 0);
+            const sinR = Math.sin(f.rot);
+            const cosR = Math.cos(f.rot);
+            pos.x = f.x + 0.85 * sinR;
+            pos.z = f.z + 0.85 * cosR;
+            pos.rot = f.rot + Math.PI;
             applyPose('idle', 0);
             st().setActivity('wardrobe');
+          },
+        },
+        {
+          id: `bike_${tierId}`,
+          name: `${houseLabel} · Bicycle`,
+          arabic: 'دَرَّاجَةٌ هَوَائِيَّةٌ',
+          x: bikePos[0],
+          z: bikePos[1],
+          radius: 2.2,
+          action: '🚲 Ride Bicycle (Speed 10.5 m/s)',
+          isAvailable: () => canUse() && st().housing.upgrades.includes('asset_bicycle') && st().mount !== 'bicycle',
+          onInteract: () => {
+            st().setMount('bicycle');
+            return 'Mounted Raleigh Bicycle! Press F or tap Dismount to get off.';
+          },
+        },
+        {
+          id: `okada_${tierId}`,
+          name: `${houseLabel} · Okada Motorcycle`,
+          arabic: 'دَرَّاجَةٌ نَارِيَّةٌ',
+          x: bikePos[0] + 2.4,
+          z: bikePos[1],
+          radius: 2.2,
+          action: '🏍️ Ride Okada (Speed 16 m/s)',
+          isAvailable: () => canUse() && st().housing.upgrades.includes('asset_okada') && st().mount !== 'okada',
+          onInteract: () => {
+            st().setMount('okada');
+            return 'Mounted Bajaj Boxer Okada! Press F or tap Dismount to get off.';
           },
         },
         {
@@ -514,10 +701,10 @@ export const LagosWorld: React.FC = () => {
         },
       },
       // --- Interactive 3D Furniture inside the 4 Walkable 3D Houses (Gated by Active Tier) ---
-      ...makeHouseZones('ruwaq', 'Ruwaq Dorm', [46.8, -15.5], [46.8, -11.5], [51.0, -15.6], [46.6, -8.0], [54.8, -7.2]),
-      ...makeHouseZones('shared_room', 'Off-Campus Room', [64.8, -15.5], [64.8, -11.5], [73.2, -15.5], [64.6, -8.0], [73.0, -7.5]),
-      ...makeHouseZones('mini_flat', 'Mini-Flat', [83.8, -15.8], [83.8, -11.5], [88.2, -16.2], [83.5, -7.8], [94.2, -7.2]),
-      ...makeHouseZones('personal_villa', "Sheikh's Villa", [106.2, -16.2], [106.2, -11.5], [112.5, -16.5], [105.8, -6.8], [119.5, -6.5]),
+      ...makeHouseZones('ruwaq', 'Ruwaq Dorm', [46.8, -15.5], [46.8, -11.5], [51.0, -15.6], [46.6, -8.0], [54.8, -7.2], [47.2, -4.5]),
+      ...makeHouseZones('shared_room', 'Off-Campus Room', [64.8, -15.5], [64.8, -11.5], [73.2, -15.5], [64.6, -8.0], [73.0, -7.5], [65.2, -4.5]),
+      ...makeHouseZones('mini_flat', 'Mini-Flat', [83.8, -15.8], [83.8, -11.5], [88.2, -16.2], [83.5, -7.8], [94.2, -7.2], [85.0, -4.0]),
+      ...makeHouseZones('personal_villa', "Sheikh's Villa", [106.2, -16.2], [106.2, -11.5], [112.5, -16.5], [105.8, -6.8], [119.5, -6.5], [108.5, -3.2]),
       {
         id: 'saraa', name: 'Friday Saraa Canopy', arabic: 'مَائِدَةُ الصَّدَقَةِ', x: 8, z: 3.4, radius: 2.8,
         action: 'Take a free plate of jollof (+Energy)',
@@ -632,6 +819,24 @@ export const LagosWorld: React.FC = () => {
       keys[k] = true;
       if (k === 'e' || k === 'enter') interactRef.current();
       if (k === 'g') emoteRef.current();
+      if (k === 'f') {
+        const curM = st().mount;
+        if (curM !== 'none') {
+          st().setMount('none');
+          say('Dismounted vehicle.');
+        } else {
+          const up = st().housing.upgrades;
+          if (up.includes('asset_okada')) {
+            st().setMount('okada');
+            say('Mounted Okada (16.5 m/s)! Press F to dismount.');
+          } else if (up.includes('asset_bicycle')) {
+            st().setMount('bicycle');
+            say('Mounted Raleigh Bicycle (10.5 m/s)! Press F to dismount.');
+          } else {
+            say('You do not own a bicycle or okada yet! Purchase one at the 3D Furnishings store.');
+          }
+        }
+      }
       if (k === '1') applyPose('idle', 0);
       if (k === '2') applyPose('sit', 0);
       if (k === '3') applyPose('crouch', 0);
@@ -646,10 +851,46 @@ export const LagosWorld: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
+    // 3D Selection Ring & Brackets for Arranging Furniture
+    const selectionGroup = new THREE.Group();
+    selectionGroup.visible = false;
+    scene.add(selectionGroup);
+
+    const ringGeo = new THREE.RingGeometry(0.75, 0.9, 36);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const selRing = new THREE.Mesh(ringGeo, ringMat);
+    selRing.position.y = 0.03;
+    selectionGroup.add(selRing);
+
+    const bracketMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+    const makeBracket = (bx: number, bz: number, brot: number) => {
+      const g = new THREE.Group();
+      const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 0.07), bracketMat);
+      b1.position.set(0.15, 0.035, 0);
+      const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.35), bracketMat);
+      b2.position.set(0, 0.035, 0.15);
+      g.add(b1);
+      g.add(b2);
+      g.position.set(bx, 0, bz);
+      g.rotation.y = brot;
+      return g;
+    };
+    selectionGroup.add(makeBracket(0.75, 0.75, 0));
+    selectionGroup.add(makeBracket(-0.75, 0.75, Math.PI / 2));
+    selectionGroup.add(makeBracket(-0.75, -0.75, Math.PI));
+    selectionGroup.add(makeBracket(0.75, -0.75, -Math.PI / 2));
+
     // Orbit camera: one finger/mouse rotates, two fingers pinch-zoom
     const cam = { yaw: 0, pitch: 0.55, dist: 11 };
     const target = new THREE.Vector3(pos.x, 1.2, pos.z);
     const pointers = new Map<number, { x: number; y: number }>();
+    const downPos = new Map<number, { x: number; y: number }>();
     let pinchDist = 0;
     const el = renderer.domElement;
     const pinchSpan = () => {
@@ -658,6 +899,7 @@ export const LagosWorld: React.FC = () => {
     };
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      downPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 2) pinchDist = pinchSpan();
       el.setPointerCapture(e.pointerId);
     };
@@ -677,10 +919,52 @@ export const LagosWorld: React.FC = () => {
         pinchDist = span;
       }
     };
+    const raycaster = new THREE.Raycaster();
     const onUp = (e: PointerEvent) => {
+      const orig = downPos.get(e.pointerId);
+      downPos.delete(e.pointerId);
+      const isTap = orig ? Math.hypot(e.clientX - orig.x, e.clientY - orig.y) < 14 : false;
+
       pointers.delete(e.pointerId);
       if (pointers.size === 1) pinchDist = 0;
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+
+      // Tap-to-select furniture directly on 3D Canvas
+      if (isTap && pointers.size === 0) {
+        const rect = el.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        raycaster.setFromCamera(mouse, camera);
+
+        const curTier = st().housing.tier;
+        const activeFurniture = world.furnitureRegistry.filter(
+          (f) => f.tierId === curTier && f.group.visible
+        );
+
+        const meshes: THREE.Object3D[] = [];
+        activeFurniture.forEach((f) => {
+          f.group.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              (child as any).__furnitureKey = f.furnitureKey;
+              meshes.push(child);
+            }
+          });
+        });
+
+        const hits = raycaster.intersectObjects(meshes, false);
+        if (hits.length > 0) {
+          const hitKey = (hits[0].object as any).__furnitureKey;
+          if (hitKey) {
+            st().setSelectedFurniture(hitKey);
+            if (st().roomOverlay !== 'arrange_furniture') {
+              st().setRoomOverlay('arrange_furniture');
+            }
+            say(`Selected: ${hitKey.toUpperCase()} · Use D-pad to move or Turn 90°`);
+          }
+        }
+      }
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -737,20 +1021,24 @@ export const LagosWorld: React.FC = () => {
     let lastTier = st().housing.tier;
     let lastUpgradesKey = st().housing.upgrades.join(',');
 
-    // Pause the simulation only when a full modal/drawer covers the world; keep 3D active for School, Classroom & Home!
+    // Pause the simulation only when a full modal/drawer covers the world; keep 3D active for School, Classroom, Home & Arrange Mode!
     const isWorldPaused = (s: ReturnType<typeof useGameStore.getState>) =>
-      s.activeTab === 'profile' || s.activeTab === 'minbar' || s.activity !== null || s.roomOverlay !== 'none';
+      s.activeTab === 'profile' ||
+      s.activeTab === 'minbar' ||
+      s.activity !== null ||
+      s.roomOverlay === 'home_dashboard' ||
+      s.roomOverlay === 'classroom_lesson';
 
     let paused = isWorldPaused(st());
     const unsub = useGameStore.subscribe((s) => {
       paused = isWorldPaused(s);
       if (paused) joyRef.current = { x: 0, y: 0 };
 
-      // Sync 3D room upgrades whenever player buys furniture/assets
-      const nextUpgradesKey = s.housing.upgrades.join(',');
+      // Sync 3D room upgrades whenever player buys furniture/assets, changes tier, moves furniture, or mounts
+      const nextUpgradesKey = `${s.housing.tier}:${s.housing.upgrades.join(',')}:${JSON.stringify(s.housing.furnitureLayout || {})}:${s.mount}`;
       if (nextUpgradesKey !== lastUpgradesKey) {
         lastUpgradesKey = nextUpgradesKey;
-        world.syncUpgrades(s.housing.upgrades);
+        world.syncUpgrades(s.housing.upgrades, s.housing.tier, s.housing.furnitureLayout, s.mount);
       }
 
       if (s.housing.tier !== lastTier) {
@@ -760,17 +1048,33 @@ export const LagosWorld: React.FC = () => {
       // Teleport player into the 3D Classroom Hall, 3D House, or School Compound when tab or house tier changes
       if (s.activeTab !== lastTab || (s.activeTab === 'home' && s.housing.tier !== lastTier)) {
         const tabChanged = s.activeTab !== lastTab;
+        const prevTab = lastTab;
         lastTab = s.activeTab;
+        const tierChanged = s.housing.tier !== lastTier;
         lastTier = s.housing.tier;
-        applyPose('idle');
 
-        if (s.activeTab === 'classroom' && tabChanged) {
-          teleportTo(31, -7.2, Math.PI, 9.2);
-        } else if (s.activeTab === 'home') {
-          const dest = HOUSE_SPAWN[s.housing.tier] || HOUSE_SPAWN.ruwaq;
-          teleportTo(dest.x, dest.z, Math.PI, 8.8);
-        } else if (s.activeTab === 'compound' && tabChanged) {
-          teleportTo(0, 3.8, Math.PI, 11);
+        // Never teleport or reset player position when simply opening or closing overlay panels like 'profile' or 'minbar'
+        const isFromOverlay = prevTab === 'profile' || prevTab === 'minbar';
+        const isToOverlay = s.activeTab === 'profile' || s.activeTab === 'minbar';
+
+        if (!isToOverlay) {
+          if (s.activeTab === 'classroom' && tabChanged && !isFromOverlay) {
+            applyPose('idle');
+            teleportTo(31, -7.2, Math.PI, 9.2);
+          } else if (s.activeTab === 'home') {
+            if ((tabChanged && !isFromOverlay) || tierChanged) {
+              applyPose('idle');
+              const dest = HOUSE_SPAWN[s.housing.tier] || HOUSE_SPAWN.ruwaq;
+              teleportTo(dest.x, dest.z, Math.PI, 8.8);
+            }
+          } else if (s.activeTab === 'compound' && tabChanged) {
+            // ONLY teleport back to school center if arriving from another 3D realm (classroom or home),
+            // NEVER when returning from profile or minbar!
+            if (prevTab === 'classroom' || prevTab === 'home') {
+              applyPose('idle');
+              teleportTo(0, 3.8, Math.PI, 11);
+            }
+          }
         }
       }
 
@@ -781,6 +1085,7 @@ export const LagosWorld: React.FC = () => {
         playerChar = makePlayer();
         playerChar.group.position.set(pos.x, 0, pos.z);
         playerChar.group.rotation.y = pos.rot;
+        playerChar.group.add(riderMountRoot);
         scene.add(playerChar.group);
       }
     });
@@ -902,6 +1207,10 @@ export const LagosWorld: React.FC = () => {
         playerChar.update(time, dt);
       } else {
         world.rideBus.group.visible = false;
+        const curMount = st().mount;
+        riderBike.visible = curMount === 'bicycle';
+        riderMoto.visible = curMount === 'okada';
+
         let ix = (keys['arrowright'] ? 1 : 0) - (keys['arrowleft'] ? 1 : 0) + joyRef.current.x;
         let iz = (keys['arrowdown'] ? 1 : 0) - (keys['arrowup'] ? 1 : 0) + joyRef.current.y;
         const mag = Math.hypot(ix, iz);
@@ -921,9 +1230,17 @@ export const LagosWorld: React.FC = () => {
           const rightZ = -Math.sin(cam.yaw);
           const dx = rightX * ix + fwdX * -iz;
           const dz = rightZ * ix + fwdZ * -iz;
-          const speed = (sprint ? 8.5 : 4.8) * analog * dt;
+          const baseSpd = curMount === 'okada' ? (sprint ? 21.0 : 16.5) : curMount === 'bicycle' ? (sprint ? 14.0 : 10.5) : (sprint ? 8.5 : 4.8);
+          const speed = baseSpd * analog * dt;
           pos.x += dx * speed;
           pos.z += dz * speed;
+
+          if (curMount === 'bicycle') {
+            bikeWheels.forEach((w) => (w.rotation.x -= speed * 3.1));
+          } else if (curMount === 'okada') {
+            motoWheels.forEach((w) => (w.rotation.x -= speed * 2.7));
+          }
+
           for (let pass = 0; pass < 2; pass++) {
             for (const c of world.colliders) {
               const cx = THREE.MathUtils.clamp(pos.x, c.minX, c.maxX);
@@ -965,11 +1282,27 @@ export const LagosWorld: React.FC = () => {
           pos.x = THREE.MathUtils.clamp(pos.x, X_MIN, X_MAX);
           pos.z = THREE.MathUtils.clamp(pos.z, Z_MIN + 0.5, Z_MAX - 0.5);
           pos.rot += shortestAngle(pos.rot, Math.atan2(dx, dz)) * Math.min(1, dt * 12);
-          pos.y = 0;
-          if (customPose !== 'idle') applyPose('idle', 0);
-          playerChar.setPose(sprint ? 'run' : 'walk');
+          if (curMount === 'bicycle') {
+            pos.y = 0.32;
+            playerChar.setPose('ride_bike');
+          } else if (curMount === 'okada') {
+            pos.y = 0.36;
+            playerChar.setPose('ride_moto');
+          } else {
+            pos.y = 0;
+            if (customPose !== 'idle') applyPose('idle', 0);
+            playerChar.setPose(sprint ? 'run' : 'walk');
+          }
         } else {
-          playerChar.setPose(time < emoteUntil ? 'wave' : customPose);
+          if (curMount === 'bicycle') {
+            pos.y = 0.32;
+            playerChar.setPose('ride_bike');
+          } else if (curMount === 'okada') {
+            pos.y = 0.36;
+            playerChar.setPose('ride_moto');
+          } else {
+            playerChar.setPose(time < emoteUntil ? 'wave' : customPose);
+          }
         }
         playerChar.group.position.set(pos.x, pos.y, pos.z);
         playerChar.group.rotation.y = pos.rot;
@@ -1010,8 +1343,43 @@ export const LagosWorld: React.FC = () => {
         v.wheels.forEach((w) => (w.rotation.z -= spin));
       }
 
+      // --- 3D selection indicator for arranging room ---
+      if (st().roomOverlay === 'arrange_furniture') {
+        const curTier = st().housing.tier;
+        const selKey = st().selectedFurniture || 'desk';
+        const curItem = world.furnitureRegistry.find(
+          (f) => f.tierId === curTier && f.furnitureKey === selKey && f.group.visible
+        );
+        if (curItem) {
+          selectionGroup.visible = true;
+          selectionGroup.position.copy(curItem.group.position);
+          selectionGroup.rotation.y = curItem.group.rotation.y;
+          const pulse = 1.0 + Math.sin(time * 5) * 0.05;
+          selectionGroup.scale.set(pulse, 1, pulse);
+        } else {
+          selectionGroup.visible = false;
+        }
+      } else {
+        selectionGroup.visible = false;
+      }
+
       // --- camera ---
-      target.lerp(tmpV.set(pos.x, 1.3 + (pos.y || 0) * 0.4, pos.z), 1 - Math.exp(-dt * 8));
+      if (st().roomOverlay === 'arrange_furniture') {
+        const curTier = st().housing.tier;
+        const selKey = st().selectedFurniture || 'desk';
+        const curItem = world.furnitureRegistry.find(
+          (f) => f.tierId === curTier && f.furnitureKey === selKey && f.group.visible
+        );
+        if (curItem) {
+          target.lerp(tmpV.set(curItem.group.position.x, curItem.group.position.y + 0.85, curItem.group.position.z), 1 - Math.exp(-dt * 6));
+          cam.dist = THREE.MathUtils.clamp(cam.dist, 3.8, 8.5);
+          cam.pitch = THREE.MathUtils.clamp(cam.pitch, 0.42, 1.15);
+        } else {
+          target.lerp(tmpV.set(pos.x, 1.3 + (pos.y || 0) * 0.4, pos.z), 1 - Math.exp(-dt * 8));
+        }
+      } else {
+        target.lerp(tmpV.set(pos.x, 1.3 + (pos.y || 0) * 0.4, pos.z), 1 - Math.exp(-dt * 8));
+      }
       const cp = Math.cos(cam.pitch);
       camera.position.set(
         target.x + Math.sin(cam.yaw) * cp * cam.dist,
@@ -1026,7 +1394,8 @@ export const LagosWorld: React.FC = () => {
       let bestScore = Infinity;
       for (const z of zones) {
         if (z.isAvailable && !z.isAvailable()) continue;
-        const d = Math.hypot(pos.x - z.x, pos.z - z.z);
+        const zPos = z.getPos ? z.getPos() : { x: z.x, z: z.z };
+        const d = Math.hypot(pos.x - zPos.x, pos.z - zPos.z);
         if (d <= z.radius && d / z.radius < bestScore) {
           best = z;
           bestScore = d / z.radius;
@@ -1282,70 +1651,324 @@ export const LagosWorld: React.FC = () => {
           <span>👋 Wave</span>
           <kbd className="text-[9px] opacity-60">G</kbd>
         </button>
+        {mount !== 'none' ? (
+          <button
+            onClick={() => setMount('none')}
+            className="px-2.5 py-1 rounded-lg font-bold bg-amber-400 text-stone-950 shadow-md cursor-pointer flex items-center gap-1 animate-pulse"
+            title="Dismount Vehicle (F)"
+          >
+            <span>{mount === 'okada' ? '🏍️ Dismount' : '🚲 Dismount'}</span>
+            <kbd className="text-[9px] opacity-70 bg-black/20 px-1 rounded">F</kbd>
+          </button>
+        ) : housing.upgrades.includes('asset_okada') ? (
+          <button
+            onClick={() => setMount('okada')}
+            className="px-2 py-1 rounded-lg font-bold text-amber-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+            title="Ride Okada (F)"
+          >
+            <span>🏍️ Okada</span>
+            <kbd className="text-[9px] opacity-60">F</kbd>
+          </button>
+        ) : housing.upgrades.includes('asset_bicycle') ? (
+          <button
+            onClick={() => setMount('bicycle')}
+            className="px-2 py-1 rounded-lg font-bold text-emerald-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+            title="Ride Bicycle (F)"
+          >
+            <span>🚲 Bicycle</span>
+            <kbd className="text-[9px] opacity-60">F</kbd>
+          </button>
+        ) : null}
       </div>
 
       {/* Touch controls: joystick (left) */}
-      <div
-        className="kw-touch-only absolute left-4 items-end"
-        style={{
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
-          left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
-        }}
-      >
+      {roomOverlay !== 'arrange_furniture' && (
         <div
-          ref={padRef}
-          className="kw-glass relative w-32 h-32 rounded-full flex items-center justify-center"
-          style={{ touchAction: 'none' }}
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            handleJoy(e, true);
+          className="kw-touch-only absolute left-4 items-end"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
+            left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
           }}
-          onPointerMove={(e) => {
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) handleJoy(e, true);
-          }}
-          onPointerUp={(e) => handleJoy(e, false)}
-          onPointerCancel={(e) => handleJoy(e, false)}
         >
-          <div ref={joyKnobRef} className="w-14 h-14 rounded-full bg-linear-to-b from-kw-gold-soft to-kw-gold shadow-lg pointer-events-none" />
+          <div
+            ref={padRef}
+            className="kw-glass relative w-32 h-32 rounded-full flex items-center justify-center"
+            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              handleJoy(e, true);
+            }}
+            onPointerMove={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) handleJoy(e, true);
+            }}
+            onPointerUp={(e) => handleJoy(e, false)}
+            onPointerCancel={(e) => handleJoy(e, false)}
+          >
+            <div ref={joyKnobRef} className="w-14 h-14 rounded-full bg-linear-to-b from-kw-gold-soft to-kw-gold shadow-lg pointer-events-none" />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Touch controls: action cluster (right) */}
-      <div
-        className="kw-touch-only absolute flex-col items-end gap-2"
-        style={{
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
-          right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
-        }}
-      >
-        {nearby && (
-          <div className="kw-glass-strong kw-pop px-3 py-1.5 text-center max-w-[52vw]">
-            <div className="kw-label">{nearby.name}</div>
-            <div className="text-[11px] leading-tight">{nearby.action}</div>
+      {roomOverlay !== 'arrange_furniture' && (
+        <div
+          className="kw-touch-only absolute flex-col items-end gap-2"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
+            right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+          }}
+        >
+          {nearby && (
+            <div className="kw-glass-strong kw-pop px-3 py-1.5 text-center max-w-[52vw]">
+              <div className="kw-label">{nearby.name}</div>
+              <div className="text-[11px] leading-tight">{nearby.action}</div>
+            </div>
+          )}
+          <div className="flex items-end gap-2.5">
+            {mount !== 'none' ? (
+              <button
+                onClick={() => setMount('none')}
+                className="kw-glass w-14 h-14 cursor-pointer flex flex-col items-center justify-center bg-amber-400 text-stone-950 font-extrabold animate-pulse shadow-lg rounded-2xl"
+                aria-label="Dismount Vehicle"
+                title="Dismount"
+              >
+                <span className="text-xl leading-none">{mount === 'okada' ? '🏍️' : '🚲'}</span>
+                <span className="text-[9px] uppercase font-bold tracking-tight">Dismount</span>
+              </button>
+            ) : (
+              <>
+                {housing.upgrades.includes('asset_okada') && (
+                  <button
+                    onClick={() => setMount('okada')}
+                    className="kw-glass w-13 h-13 cursor-pointer flex flex-col items-center justify-center text-amber-300 font-bold hover:bg-white/10 rounded-2xl"
+                    aria-label="Ride Okada"
+                    title="Ride Okada"
+                  >
+                    <span className="text-lg leading-none">🏍️</span>
+                    <span className="text-[8.5px] uppercase font-bold text-amber-200">Okada</span>
+                  </button>
+                )}
+                {housing.upgrades.includes('asset_bicycle') && (
+                  <button
+                    onClick={() => setMount('bicycle')}
+                    className="kw-glass w-13 h-13 cursor-pointer flex flex-col items-center justify-center text-emerald-300 font-bold hover:bg-white/10 rounded-2xl"
+                    aria-label="Ride Bicycle"
+                    title="Ride Bicycle"
+                  >
+                    <span className="text-lg leading-none">🚲</span>
+                    <span className="text-[8.5px] uppercase font-bold text-emerald-200">Bike</span>
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              onClick={() => emoteRef.current()}
+              className="kw-glass w-12 h-12 text-xl cursor-pointer flex items-center justify-center"
+              aria-label="Greet"
+            >
+              👋
+            </button>
+            <button
+              onClick={() => interactRef.current()}
+              disabled={!nearby}
+              aria-label="Interact"
+              className={`w-[72px] h-[72px] rounded-full flex items-center justify-center border-2 transition ${
+                nearby
+                  ? 'kw-pulse bg-linear-to-b from-kw-gold-soft to-kw-gold border-white/60 text-[#2a1c00] shadow-xl active:scale-90'
+                  : 'kw-glass text-kw-cream-dim opacity-70'
+              }`}
+            >
+              <Hand className="w-8 h-8" />
+            </button>
           </div>
-        )}
-        <div className="flex items-end gap-3">
+        </div>
+      )}
+
+      {/* Quick House Navigation Bar (when in 3D Home) */}
+      {activeTab === 'home' && roomOverlay === 'none' && (
+        <div
+          className="kw-pop absolute left-1/2 -translate-x-1/2 z-10 flex items-center gap-2"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 72px)' }}
+        >
           <button
-            onClick={() => emoteRef.current()}
-            className="kw-glass w-12 h-12 text-xl cursor-pointer flex items-center justify-center"
-            aria-label="Greet"
+            onClick={() => setRoomOverlay('arrange_furniture')}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95 transition"
           >
-            👋
+            <span>📐</span>
+            <span>Arrange Room</span>
           </button>
           <button
-            onClick={() => interactRef.current()}
-            disabled={!nearby}
-            aria-label="Interact"
-            className={`w-[72px] h-[72px] rounded-full flex items-center justify-center border-2 transition ${
-              nearby
-                ? 'kw-pulse bg-linear-to-b from-kw-gold-soft to-kw-gold border-white/60 text-[#2a1c00] shadow-xl active:scale-90'
-                : 'kw-glass text-kw-cream-dim opacity-70'
-            }`}
+            onClick={() => setRoomOverlay('home_dashboard')}
+            className="px-3.5 py-1.5 rounded-xl bg-stone-900/80 hover:bg-stone-900 text-amber-200 border border-amber-400/40 font-extrabold text-xs shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95 transition"
           >
-            <Hand className="w-8 h-8" />
+            <span>🏠</span>
+            <span>House Ledger</span>
           </button>
         </div>
-      </div>
+      )}
+
+      {/* Floating 3D Arrange Overlay */}
+      {roomOverlay === 'arrange_furniture' && (
+        <div
+          className="kw-pop absolute left-1/2 -translate-x-1/2 z-30 w-[min(96vw,560px)] p-3 sm:p-4 rounded-3xl bg-stone-950/90 backdrop-blur-md border-2 border-amber-400 text-white shadow-2xl flex flex-col gap-2.5"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-white/15 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-base">📐</span>
+              <span className="font-extrabold text-xs sm:text-sm text-amber-200">Arrange Room in 3D</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => updateFurnitureTransform(selectedFurniture, { dx: 0, dz: 0, rot: 0 })}
+                className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-[11px] font-bold text-stone-200 cursor-pointer"
+              >
+                ↺ Reset Piece
+              </button>
+              <button
+                onClick={() => setRoomOverlay('none')}
+                className="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer"
+              >
+                ✓ Done
+              </button>
+            </div>
+          </div>
+
+          {/* Pieces Tabs */}
+          {(() => {
+            const pieces = [
+              {
+                id: 'bed',
+                label: 'Bed',
+                fullName: housing.upgrades.includes('asset_mattress') ? 'Orthopedic Mattress' : 'Bed / Sleeping Mat',
+                icon: '🛌',
+              },
+              {
+                id: 'desk',
+                label: 'Study Desk',
+                fullName: housing.upgrades.includes('asset_desk') ? 'Executive Study Desk & Chair' : 'Study Desk & Chair',
+                icon: '🪑',
+              },
+              {
+                id: 'rug',
+                label: 'Prayer Rug',
+                fullName: 'Sajjadah Prayer Rug',
+                icon: '🕌',
+              },
+              {
+                id: 'wardrobe',
+                label: housing.tier === 'ruwaq' ? 'Trunk Box' : 'Wardrobe',
+                fullName: housing.tier === 'ruwaq' ? 'Apoti Irin Trunk' : 'Wardrobe',
+                icon: '🚪',
+              },
+              ...(housing.upgrades.includes('asset_fan') ? [{ id: 'fan', label: 'Standing Fan', fullName: 'Standing OX Fan', icon: '🌀' }] : []),
+              ...(housing.upgrades.includes('asset_maktabah') ? [{ id: 'maktabah', label: 'Bookshelf', fullName: 'Maktabah Bookshelf', icon: '📚' }] : []),
+            ];
+
+            const activePieceId = pieces.some((p) => p.id === selectedFurniture) ? selectedFurniture : pieces[0].id;
+            const activePiece = pieces.find((p) => p.id === activePieceId) ?? pieces[0];
+            const curLayout = housing.furnitureLayout ?? {};
+            const curTf = curLayout[activePieceId] ?? { dx: 0, dz: 0, rot: 0 };
+            const curRotDeg = Math.round(((curTf.rot % (Math.PI * 2)) * 180) / Math.PI);
+            const normalizedRot = (curRotDeg + 360) % 360;
+
+            return (
+              <>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 kw-scroll">
+                  {pieces.map((p) => {
+                    const isSel = activePieceId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedFurniture(p.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold shrink-0 cursor-pointer transition flex items-center gap-1.5 border ${
+                          isSel
+                            ? 'bg-amber-400 text-stone-950 border-amber-300 shadow-md scale-105'
+                            : 'bg-white/10 hover:bg-white/20 text-stone-200 border-white/10'
+                        }`}
+                      >
+                        <span className="text-sm">{p.icon}</span>
+                        <span>{p.label}</span>
+                        {isSel && <span className="text-[10px]">●</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Adjuster D-pad + Turn */}
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="text-left leading-tight">
+                    <div className="text-[11px] text-amber-300 font-extrabold uppercase tracking-wide">
+                      {activePiece.fullName}
+                    </div>
+                    <div className="text-[10.5px] font-mono text-stone-300 pt-0.5">
+                      X: {curTf.dx >= 0 ? `+${curTf.dx.toFixed(1)}` : curTf.dx.toFixed(1)}m · Z: {curTf.dz >= 0 ? `+${curTf.dz.toFixed(1)}` : curTf.dz.toFixed(1)}m · {normalizedRot}°
+                    </div>
+                    <div className="text-[9.5px] text-stone-400 pt-1">
+                      💡 Tap arrows to move in real-time · Tap room to look around
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* D-pad */}
+                    <div className="grid grid-cols-3 gap-1 w-28 h-28 p-1 rounded-2xl bg-white/10 border border-white/15">
+                      <div />
+                      <button
+                        onClick={() => updateFurnitureTransform(activePieceId, { dz: curTf.dz - 0.35 })}
+                        title="Move Back / North"
+                        className="rounded-xl bg-white/20 hover:bg-amber-400 hover:text-stone-950 flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-base"
+                      >
+                        ▲
+                      </button>
+                      <div />
+                      <button
+                        onClick={() => updateFurnitureTransform(activePieceId, { dx: curTf.dx - 0.35 })}
+                        title="Move Left / West"
+                        className="rounded-xl bg-white/20 hover:bg-amber-400 hover:text-stone-950 flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-base"
+                      >
+                        ◀
+                      </button>
+                      <div className="flex items-center justify-center text-[9px] font-extrabold text-stone-400">
+                        MOVE
+                      </div>
+                      <button
+                        onClick={() => updateFurnitureTransform(activePieceId, { dx: curTf.dx + 0.35 })}
+                        title="Move Right / East"
+                        className="rounded-xl bg-white/20 hover:bg-amber-400 hover:text-stone-950 flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-base"
+                      >
+                        ▶
+                      </button>
+                      <div />
+                      <button
+                        onClick={() => updateFurnitureTransform(activePieceId, { dz: curTf.dz + 0.35 })}
+                        title="Move Forward / South"
+                        className="rounded-xl bg-white/20 hover:bg-amber-400 hover:text-stone-950 flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-base"
+                      >
+                        ▼
+                      </button>
+                      <div />
+                    </div>
+
+                    {/* Turn 90° button */}
+                    <button
+                      onClick={() =>
+                        updateFurnitureTransform(activePieceId, {
+                          rot: (curTf.rot + Math.PI / 2) % (Math.PI * 2),
+                        })
+                      }
+                      className="px-3.5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs cursor-pointer flex flex-col items-center justify-center gap-1 shadow-lg active:scale-95"
+                    >
+                      <span className="text-xl">🔄</span>
+                      <span className="text-[10px] leading-none font-extrabold">Turn 90°</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };

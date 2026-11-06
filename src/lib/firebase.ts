@@ -9,6 +9,8 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  setPersistence,
+  browserLocalPersistence,
   User,
 } from 'firebase/auth';
 import {
@@ -54,6 +56,10 @@ if (typeof window !== 'undefined' && firebaseConfig.apiKey) {
   try {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
+    // Ensure tokens and user sessions persist indefinitely in browser local storage
+    setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.warn('Could not set browserLocalPersistence:', err);
+    });
     db = getFirestore(app);
     isAnalyticsSupported()
       .then((yes) => {
@@ -266,6 +272,53 @@ export function subscribeMinbarPosts(cb: (posts: MinbarPost[]) => void): () => v
 }
 
 /**
+ * Resizes and compresses any avatar photo into a lightweight 192x192 JPEG (< 18 KB).
+ * This fits safely within Firestore's 1MB document limit and localStorage limits.
+ */
+export async function compressAvatarImage(file: File): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 192;
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > MAX) {
+            h = Math.round((h * MAX) / w);
+            w = MAX;
+          }
+        } else {
+          if (h > MAX) {
+            w = Math.round((w * MAX) / h);
+            h = MAX;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(
+            (blob) => {
+              resolve(blob || file);
+            },
+            'image/jpeg',
+            0.82,
+          );
+        } else {
+          resolve(file);
+        }
+      };
+      img.src = String(e.target?.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Free-tier media upload via Cloudinary unsigned preset (if configured in .env.local),
  * with automatic fallback to compressed data URL for avatars so zero paid Firebase Storage is needed.
  */
@@ -273,26 +326,41 @@ export async function uploadMediaFree(file: File): Promise<string> {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
+  // Always compress avatar first to guarantee minimal payload size
+  let blob: Blob = file;
+  try {
+    blob = await compressAvatarImage(file);
+  } catch {
+    blob = file;
+  }
+
   if (cloudName && uploadPreset) {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('upload_preset', uploadPreset);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-      method: 'POST',
-      body: form,
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.secure_url) return json.secure_url as string;
+    try {
+      const form = new FormData();
+      form.append('file', blob, 'avatar.jpg');
+      form.append('upload_preset', uploadPreset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.secure_url) return json.secure_url as string;
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn('Cloudinary upload warning:', errJson);
+      }
+    } catch (err) {
+      console.warn('Cloudinary upload error:', err);
     }
   }
 
-  // Fallback: read as compact Data URL
+  // Fallback: read compressed blob as compact Data URL (< 18 KB)
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
 }
 

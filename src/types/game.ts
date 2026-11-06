@@ -1,5 +1,7 @@
 export type LifeStage = 'omo_kewu' | 'arowo_kewu' | 'markaziy' | 'sheikh_agba';
 
+export type MountVehicle = 'none' | 'bicycle' | 'okada';
+
 export interface PlayerStats {
   ilm: number;             // Islamic knowledge / Arabic fluency (0 - 100)
   taqwa: number;           // Piety & good character (0 - 100)
@@ -59,11 +61,18 @@ export type HousingTierId = 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_vi
 
 export type HousingOwnership = 'boarding' | 'rented' | 'owned';
 
+export interface FurnitureTransform {
+  dx: number;  // Offset along X in meters (-4 to +4)
+  dz: number;  // Offset along Z in meters (-4 to +4)
+  rot: number; // Rotation in radians (0, Math.PI/2, Math.PI, 1.5*Math.PI)
+}
+
 export interface PlayerHousing {
   tier: HousingTierId;
   ownership: HousingOwnership;
   rentDueInDays: number;
   upgrades: string[]; // IDs of acquired home/lifestyle assets
+  furnitureLayout?: Record<string, FurnitureTransform>;
 }
 
 export type SubjectId = 'nahw' | 'fiqh' | 'tajweed' | 'hadith' | 'seerah' | 'adab';

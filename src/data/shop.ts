@@ -136,8 +136,8 @@ export const HOUSING_TIERS: HousingProperty[] = [
     subtitle: 'Owned 4-Bedroom Duplex & Private Courtyard · Isolo / Ejigbo',
     description:
       'The pinnacle of hard work and Barakah! Your own permanent family home with a shaded courtyard where neighborhood children attend afternoon Madrasah under your patronage.',
-    rentPrice: 0,
-    buyPrice: 250000,
+    rentPrice: 35000,
+    buyPrice: 350000,
     energyRecovery: 100,
     ilmBonusPct: 40,
     dailyPassiveIncome: 2500,

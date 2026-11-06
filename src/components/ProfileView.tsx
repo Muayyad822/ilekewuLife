@@ -44,6 +44,12 @@ export const ProfileView: React.FC = () => {
   const [madrasahInput, setMadrasahInput] = useState(player.madrasahName);
   const [genderInput, setGenderInput] = useState<'male' | 'female'>(player.gender);
 
+  React.useEffect(() => {
+    setNameInput(player.name);
+    setMadrasahInput(player.madrasahName);
+    setGenderInput(player.gender);
+  }, [player.name, player.madrasahName, player.gender]);
+
   // Firebase Auth form state
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -152,7 +158,7 @@ export const ProfileView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-stone-300">
-              {player.madrasahName} · Age {player.age} · Juz {player.hifzJuz}/30
+              {player.madrasahName}
             </p>
             <div className="flex items-center gap-2 mt-1 text-[11px]">
               {authUser ? (
@@ -285,24 +291,16 @@ export const ProfileView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await syncToCloud();
-                      setFeedback(ok ? '✓ Progress saved!' : '✓ Saved.');
-                    }}
-                    className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs py-2.5 rounded-xl cursor-pointer"
-                  >
-                    Save Progress
-                  </button>
+                <div className="flex items-center justify-between gap-2 pt-1">
+    
                   <button
                     type="button"
                     onClick={async () => {
                       await signOutUser();
+                      useGameStore.getState().setAuthUser(null);
                       setFeedback('Signed out.');
                     }}
-                    className="px-4 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs cursor-pointer flex items-center gap-1"
+                    className="px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs cursor-pointer flex items-center gap-1 transition"
                   >
                     <LogOut className="w-3.5 h-3.5" /> Sign Out
                   </button>

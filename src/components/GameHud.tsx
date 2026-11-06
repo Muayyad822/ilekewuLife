@@ -63,7 +63,6 @@ const Meter: React.FC<{ icon: React.ReactNode; value: number; color: string; lab
 
 export const TopLeftHud: React.FC = () => {
   const player = useGameStore((s) => s.player);
-  const housing = useGameStore((s) => s.housing);
   const setActiveTab = useGameStore((s) => s.setActiveTab);
   const s = player.stats;
   const stage = STAGES[player.stage] ?? STAGES.omo_kewu;
@@ -72,6 +71,7 @@ export const TopLeftHud: React.FC = () => {
   useEffect(() => {
     const unsubAuth = subscribeToAuth(async (user) => {
       const store = useGameStore.getState();
+      store.setAuthChecked(true);
       if (user) {
         store.setAuthUser({
           uid: user.uid,
@@ -89,6 +89,11 @@ export const TopLeftHud: React.FC = () => {
       }
     });
 
+    const onBeforeUnload = () => {
+      useGameStore.getState().syncToCloud();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
     const unsubPeers = subscribeOnlinePeers((peers) => {
       useGameStore.getState().setOnlinePeers(peers);
     });
@@ -102,6 +107,7 @@ export const TopLeftHud: React.FC = () => {
     });
 
     return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
       unsubAuth();
       unsubPeers();
       unsubChallenges();
@@ -113,10 +119,10 @@ export const TopLeftHud: React.FC = () => {
     <div
       onClick={() => setActiveTab('profile')}
       title="Open Scholar Profile & Real Estate"
-      className="kw-glass kw-safe-top kw-safe-left absolute px-3 py-2 flex flex-col gap-1.5 w-[min(60vw,310px)] cursor-pointer hover:border-amber-400/40 transition"
+      className="kw-glass kw-safe-top kw-safe-left absolute px-2.5 sm:px-3 py-2 flex flex-col gap-1.5 w-[min(46vw,240px)] cursor-pointer hover:border-amber-400/40 transition"
     >
-      <div className="flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-xl bg-linear-to-b from-kw-gold-soft to-kw-gold flex items-center justify-center text-lg shadow-inner overflow-hidden shrink-0">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-b from-kw-gold-soft to-kw-gold flex items-center justify-center text-lg shadow-inner overflow-hidden shrink-0">
           {player.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={player.avatarUrl} alt={player.name} className="w-full h-full object-cover" />
@@ -125,24 +131,22 @@ export const TopLeftHud: React.FC = () => {
           )}
         </div>
         <div className="min-w-0 leading-tight">
-          <div className="kw-display text-[15px] font-extrabold truncate">{player.name}</div>
-          <div className="text-[10.5px] text-kw-gold-soft font-semibold truncate">
-            {stage.title} · {HOUSING_SHORT[housing.tier] ?? 'Ruwaq'} · Juz {player.hifzJuz}/30
+          <div className="kw-display text-[13.5px] sm:text-[15px] font-extrabold truncate">{player.name}</div>
+          <div className="text-[10px] sm:text-[10.5px] text-kw-gold-soft font-semibold truncate">
+            {stage.title}
           </div>
         </div>
-        <div className="ml-auto pl-2 text-right">
-          <div className="kw-label">Naira</div>
-          <div className="text-[13px] font-extrabold font-mono text-emerald-300">
+        <div className="ml-auto pl-1.5 text-right shrink-0">
+          <div className="kw-label text-[9px]">Naira</div>
+          <div className="text-[11.5px] sm:text-[13px] font-extrabold font-mono text-emerald-300">
             ₦{s.naira.toLocaleString()}
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 gap-2 pt-0.5">
         <Meter icon={<BookOpen className="w-3 h-3" />} value={s.ilm} color="#60a5fa" label="Ilm" />
         <Meter icon={<Heart className="w-3 h-3" />} value={s.taqwa} color="#34d399" label="Taqwa" />
         <Meter icon={<Zap className="w-3 h-3" />} value={s.energy} color="#fbbf24" label="Energy" />
-        <Meter icon={<ShieldAlert className="w-3 h-3" />} value={s.pasanResistance} color="#fb7185" label="Pasan defense" />
-        <Meter icon={<Sparkles className="w-3 h-3" />} value={s.barakah} color="#a78bfa" label="Barakah" />
       </div>
     </div>
   );
@@ -175,31 +179,31 @@ export const TopRightHud: React.FC = () => {
   const displayHour = mounted ? hour : 7;
   const prayer = prayerFor(displayHour, solatTimings);
   return (
-    <div className="kw-glass kw-safe-top kw-safe-right absolute px-2.5 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
-      <div className="text-right leading-tight">
-        <div className="kw-display text-[14px] sm:text-[15px] font-extrabold flex items-center justify-end gap-1.5">
+    <div className="kw-glass kw-safe-top kw-safe-right absolute px-2.5 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-3 max-w-[52vw] sm:max-w-none">
+      <div className="text-right leading-tight min-w-0">
+        <div className="kw-display text-[12.5px] sm:text-[14.5px] font-extrabold flex items-center justify-end gap-1 sm:gap-1.5 truncate">
           <span>{prayer.icon}</span>
-          <span>{prayer.name}</span>
-          <span dir="rtl" className="font-serif text-kw-gold-soft text-sm hidden sm:inline">
+          <span className="truncate">{prayer.name}</span>
+          <span dir="rtl" className="font-serif text-kw-gold-soft text-xs sm:text-sm shrink-0">
             {prayer.arabic}
           </span>
         </div>
-        <div className="text-[10.5px] text-kw-cream-dim font-mono flex items-center justify-end gap-1.5">
+        <div className="text-[9.5px] sm:text-[10.5px] text-kw-cream-dim font-mono flex items-center justify-end gap-1 mt-0.5 truncate">
           <span className="text-white font-bold">{mounted ? formatHour(displayHour) : '--:--'}</span>
-          <span className="hidden md:inline text-kw-gold-soft">
+          <span className="text-kw-gold-soft truncate">
             · Next {prayer.nextName} {prayer.nextTimeStr}
           </span>
         </div>
-        <div className="text-[10px] text-sky-300 font-semibold flex items-center justify-end gap-1 mt-0.5">
+        <div className="text-[9px] sm:text-[10px] text-sky-300 font-semibold flex items-center justify-end gap-1 mt-0.5 truncate">
           <span>{weather.icon}</span>
           <span className="font-mono font-bold">{weather.tempC}°C</span>
-          <span className="hidden sm:inline">· {weather.label}</span>
+          <span className="truncate">· {weather.label}</span>
         </div>
       </div>
-      <div className="flex items-center gap-1 border-l border-white/10 pl-2">
+      <div className="flex items-center gap-0.5 sm:gap-1 border-l border-white/10 pl-1.5 sm:pl-2 shrink-0">
         <button
           onClick={toggleMute}
-          className="p-2 sm:p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
+          className="p-1.5 rounded-lg text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
           title={isMuted ? 'Unmute' : 'Mute'}
           aria-label={isMuted ? 'Unmute' : 'Mute'}
         >
@@ -231,6 +235,17 @@ const DOCK: { id: TabId; label: string; icon: React.ElementType }[] = [
 export const Dock: React.FC = () => {
   const activeTab = useGameStore((s) => s.activeTab);
   const setActiveTab = useGameStore((s) => s.setActiveTab);
+  const housing = useGameStore((s) => s.housing);
+  const mount = useGameStore((s) => s.mount);
+  const setMount = useGameStore((s) => s.setMount);
+  const roomOverlay = useGameStore((s) => s.roomOverlay);
+
+  // Hide Dock during live 3D room arrangement so the arrange controls sit at the bottom with maximum 3D view
+  if (roomOverlay === 'arrange_furniture') return null;
+
+  const hasOkada = housing.upgrades.includes('asset_okada');
+  const hasBike = housing.upgrades.includes('asset_bicycle');
+
   return (
     <nav className="kw-glass-strong kw-safe-bottom absolute left-1/2 -translate-x-1/2 px-1.5 sm:px-2 py-1 flex items-center gap-0.5 sm:gap-1 max-w-[98vw]">
       {DOCK.map(({ id, label, icon: Icon }) => (
@@ -245,6 +260,39 @@ export const Dock: React.FC = () => {
           {label}
         </button>
       ))}
+
+      {/* Quick Vehicle Transportation Button on Mobile & Desktop */}
+      {mount !== 'none' ? (
+        <button
+          onClick={() => setMount('none')}
+          className="kw-dock-btn bg-amber-400 text-stone-950 font-extrabold animate-pulse shadow-md"
+          title="Dismount Vehicle (F)"
+          aria-label="Dismount Vehicle"
+        >
+          <span className="text-base">{mount === 'okada' ? '🏍️' : '🚲'}</span>
+          <span className="text-[10px] leading-tight font-extrabold">Dismount</span>
+        </button>
+      ) : hasOkada ? (
+        <button
+          onClick={() => setMount('okada')}
+          className="kw-dock-btn text-amber-300 hover:text-white"
+          title="Ride Okada (F)"
+          aria-label="Ride Okada"
+        >
+          <span className="text-base">🏍️</span>
+          <span className="text-[10px] leading-tight font-bold">Okada</span>
+        </button>
+      ) : hasBike ? (
+        <button
+          onClick={() => setMount('bicycle')}
+          className="kw-dock-btn text-emerald-300 hover:text-white"
+          title="Ride Bicycle (F)"
+          aria-label="Ride Bicycle"
+        >
+          <span className="text-base">🚲</span>
+          <span className="text-[10px] leading-tight font-bold">Bike</span>
+        </button>
+      ) : null}
     </nav>
   );
 };
@@ -270,6 +318,7 @@ export const PanelDrawer: React.FC = () => {
   const studyAtDesk = useGameStore((s) => s.studyAtDesk);
   const setActivity = useGameStore((s) => s.setActivity);
   const resetGame = useGameStore((s) => s.resetGame);
+  const lastWorldTab = useGameStore((s) => s.lastWorldTab || 'compound');
 
   const [quickMsg, setQuickMsg] = useState<string | null>(null);
   const showQuick = (m: string) => {
@@ -277,7 +326,7 @@ export const PanelDrawer: React.FC = () => {
     setTimeout(() => setQuickMsg(null), 3500);
   };
 
-  if ((activeTab === 'compound' || activeTab === 'home') && roomOverlay === 'none') return null;
+  if ((activeTab === 'compound' || activeTab === 'home') && (roomOverlay === 'none' || roomOverlay === 'arrange_furniture')) return null;
 
   // Compact 3D Classroom Bar
   if (activeTab === 'classroom' && roomOverlay === 'none') {
@@ -322,7 +371,7 @@ export const PanelDrawer: React.FC = () => {
     if (roomOverlay !== 'none') {
       setRoomOverlay('none');
     } else {
-      setActiveTab('compound');
+      setActiveTab(lastWorldTab);
     }
   };
 

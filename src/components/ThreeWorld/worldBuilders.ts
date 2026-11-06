@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildCharacter, Character, CharacterOptions, Pose } from './characterBuilder';
+import { FurnitureTransform, MountVehicle } from '@/types/game';
 
 export interface Collider {
   minX: number;
@@ -28,6 +29,18 @@ export interface NPC {
   idlePose: Pose;
 }
 
+export interface FurnitureItem {
+  tierId: string;
+  furnitureKey: string;
+  group: THREE.Object3D;
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  baseRotY: number;
+  upgradeId?: string;
+  defaultFor?: string;
+}
+
 export interface WorldHandles {
   colliders: Collider[];
   vehicles: Vehicle[];
@@ -37,8 +50,14 @@ export interface WorldHandles {
   headMats: THREE.MeshStandardMaterial[];
   npcs: NPC[];
   fanRotors: THREE.Object3D[];
-  syncUpgrades: (upgrades: string[]) => void;
+  syncUpgrades: (
+    upgrades: string[],
+    activeTier: string,
+    furnitureLayout?: Record<string, FurnitureTransform>,
+    mountVehicle?: MountVehicle,
+  ) => void;
   syncHouseAccess: (activeTier: string) => void;
+  furnitureRegistry: FurnitureItem[];
   dispose: () => void;
 }
 
@@ -82,16 +101,12 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   const npcs: NPC[] = [];
   const extras: THREE.Object3D[] = [];
   const fanRotors: THREE.Object3D[] = [];
-  const upgradeMap: Record<string, THREE.Object3D[]> = {};
-  const registerUpgrade = (id: string, obj: THREE.Object3D) => {
-    if (!upgradeMap[id]) upgradeMap[id] = [];
-    obj.visible = false;
-    upgradeMap[id].push(obj);
-  };
-  const defaultUpgradeMap: Record<string, THREE.Object3D[]> = {};
-  const registerDefaultUnit = (upgradeId: string, obj: THREE.Object3D) => {
-    if (!defaultUpgradeMap[upgradeId]) defaultUpgradeMap[upgradeId] = [];
-    defaultUpgradeMap[upgradeId].push(obj);
+  const furnitureRegistry: FurnitureItem[] = [];
+  const registerFurniture = (item: FurnitureItem) => {
+    if (item.upgradeId) {
+      item.group.visible = false;
+    }
+    furnitureRegistry.push(item);
   };
 
   const mat = (color: number, rough = 0.85, metal = 0) => {
@@ -357,18 +372,30 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   };
 
   // Helper to build a 3D Prayer Rug (Sajjadah)
-  const buildPrayerRug = (x: number, z: number, color = 0x0d6b4c, border = 0xf5b335) => {
-    strip(x, z, 1.35, 2.1, border, 0.03);
-    strip(x, z, 1.15, 1.85, color, 0.034);
+  const buildPrayerRug = (tierId: string, x: number, z: number, color = 0x0d6b4c, border = 0xf5b335) => {
+    const g = new THREE.Group();
+    box(g, 1.35, 0.02, 2.1, border, 0, 0.015, 0, { cast: false });
+    box(g, 1.15, 0.024, 1.85, color, 0, 0.019, 0, { cast: false });
     // Mihrab arch pattern pointing North/East
     const arch = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.38, 12, 1, 0, Math.PI), mat(border, 0.8));
     arch.rotation.x = -Math.PI / 2;
-    arch.position.set(x, 0.038, z - 0.55);
-    scene.add(arch);
+    arch.position.set(0, 0.024, -0.55);
+    g.add(arch);
+    place(g, x, 0, z);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'rug',
+      group: g,
+      baseX: x,
+      baseY: 0,
+      baseZ: z,
+      baseRotY: 0,
+    });
+    return g;
   };
 
   // Helper to build a 3D Wardrobe / Trunk Box station
-  const buildWardrobe = (x: number, z: number, isTrunk = false) => {
+  const buildWardrobe = (tierId: string, x: number, z: number, isTrunk = false) => {
     const g = new THREE.Group();
     if (isTrunk) {
       // Classic boarding school metal trunk box (Apoti Irin) + hanging peg rack
@@ -384,29 +411,50 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
       cyl(g, 0.03, 0.03, 0.18, 0xfacc15, 0.08, 1.05, 0.4, 6);
     }
     place(g, x, 0, z);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'wardrobe',
+      group: g,
+      baseX: x,
+      baseY: 0,
+      baseZ: z,
+      baseRotY: 0,
+    });
     solid(x, z, 0.7, 0.4);
+    return g;
   };
 
   // Helper to build a complete default Study Desk & Chair set before asset_desk upgrade
-  const buildStudyDeskUnit = (x: number, z: number, tableColor = 0x78350f, chairColor = 0x5c2e14) => {
+  const buildStudyDeskUnit = (tierId: string, x: number, z: number, tableColor = 0x78350f, chairColor = 0x5c2e14) => {
     const g = new THREE.Group();
     // Desk table
     box(g, 1.3, 0.72, 0.75, tableColor, 0, 0.36, 0);
-    // Open notebook & pen
-    box(g, 0.36, 0.03, 0.25, 0xfef3c7, -0.2, 0.74, 0.02);
-    // Wooden Study Chair (seat top surface at y = 0.495)
-    box(g, 0.55, 0.07, 0.52, chairColor, 0, 0.46, 0.68);
-    box(g, 0.55, 0.52, 0.07, chairColor, 0, 0.75, 0.92);
-    for (const [cx, cz] of [[-0.22, 0.46], [0.22, 0.46], [-0.22, 0.88], [0.22, 0.88]]) {
+    // Open notebook & pen right in front of student
+    box(g, 0.36, 0.03, 0.25, 0xfef3c7, 0, 0.74, -0.05);
+    box(g, 0.03, 0.02, 0.22, 0x1e3a8a, 0.22, 0.75, -0.05); // Pen
+    // Wooden Study Chair (seat top surface at y = 0.46, center at z = 0.55)
+    box(g, 0.55, 0.07, 0.5, chairColor, 0, 0.46, 0.55);
+    box(g, 0.55, 0.48, 0.07, chairColor, 0, 0.72, 0.78);
+    for (const [cx, cz] of [[-0.22, 0.35], [0.22, 0.35], [-0.22, 0.75], [0.22, 0.75]]) {
       cyl(g, 0.035, 0.03, 0.45, 0x3b1d0e, cx, 0.22, cz, 6);
     }
     place(g, x, 0, z);
-    registerDefaultUnit('asset_desk', g);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'desk',
+      group: g,
+      baseX: x,
+      baseY: 0,
+      baseZ: z,
+      baseRotY: 0,
+      defaultFor: 'asset_desk',
+    });
     return g;
   };
 
   // Helper to build dynamic 3D Lifestyle Assets inside a house so purchased items physically appear in 3D!
   const attachHouseUpgrades = (
+    tierId: string,
     bedX: number,
     bedZ: number,
     deskX: number,
@@ -431,7 +479,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     }
     box(mattG, 1.7, 0.04, 2.25, 0xe0f2fe, 0, 1.88, 0);
     place(mattG, bedX, 0, bedZ);
-    registerUpgrade('asset_mattress', mattG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'bed',
+      group: mattG,
+      baseX: bedX,
+      baseY: 0,
+      baseZ: bedZ,
+      baseRotY: 0,
+      upgradeId: 'asset_mattress',
+    });
 
     // 2. Mahogany Study Desk, Chair & Glowing LED Lantern (asset_desk)
     const deskG = new THREE.Group();
@@ -440,24 +497,33 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
       cyl(deskG, 0.05, 0.04, 0.76, 0x3b1d0e, lx, 0.38, lz, 6);
     }
     // Open Mushaf & notebook on desk
-    box(deskG, 0.42, 0.04, 0.3, 0x059669, -0.25, 0.85, 0.05);
-    box(deskG, 0.38, 0.05, 0.26, 0xfef3c7, -0.25, 0.87, 0.05);
-    // Rechargeable LED Lantern
-    cyl(deskG, 0.09, 0.11, 0.12, 0xd97706, 0.42, 0.89, -0.15, 8);
+    box(deskG, 0.42, 0.04, 0.3, 0x059669, 0, 0.85, -0.05);
+    box(deskG, 0.38, 0.05, 0.26, 0xfef3c7, 0, 0.87, -0.05);
+    // Rechargeable LED Lantern on side of desk
+    cyl(deskG, 0.09, 0.11, 0.12, 0xd97706, -0.55, 0.89, -0.15, 8);
     const lanternBulb = new THREE.Mesh(
       new THREE.CylinderGeometry(0.07, 0.07, 0.22, 10),
       new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfde047, emissiveIntensity: 1.6 }),
     );
-    lanternBulb.position.set(0.42, 1.05, -0.15);
+    lanternBulb.position.set(-0.55, 1.05, -0.15);
     deskG.add(lanternBulb);
-    // Wooden Study Chair
-    box(deskG, 0.55, 0.07, 0.52, 0x5c2e14, 0, 0.46, 0.68);
-    box(deskG, 0.55, 0.52, 0.07, 0x5c2e14, 0, 0.75, 0.92);
-    for (const [cx, cz] of [[-0.22, 0.46], [0.22, 0.46], [-0.22, 0.88], [0.22, 0.88]]) {
+    // Wooden Study Chair (facing desk, seat top at y = 0.46, center at z = 0.55)
+    box(deskG, 0.55, 0.07, 0.52, 0x5c2e14, 0, 0.46, 0.55);
+    box(deskG, 0.55, 0.52, 0.07, 0x5c2e14, 0, 0.75, 0.78);
+    for (const [cx, cz] of [[-0.22, 0.35], [0.22, 0.35], [-0.22, 0.75], [0.22, 0.75]]) {
       cyl(deskG, 0.035, 0.03, 0.45, 0x3b1d0e, cx, 0.22, cz, 6);
     }
     place(deskG, deskX, 0, deskZ);
-    registerUpgrade('asset_desk', deskG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'desk',
+      group: deskG,
+      baseX: deskX,
+      baseY: 0,
+      baseZ: deskZ,
+      baseRotY: 0,
+      upgradeId: 'asset_desk',
+    });
 
     // 3. Standing OX Fan with Spinning Blades (asset_fan)
     const fanG = new THREE.Group();
@@ -477,7 +543,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     fanG.add(rotor);
     fanRotors.push(rotor);
     place(fanG, fanX, 0, fanZ);
-    registerUpgrade('asset_fan', fanG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'fan',
+      group: fanG,
+      baseX: fanX,
+      baseY: 0,
+      baseZ: fanZ,
+      baseRotY: 0,
+      upgradeId: 'asset_fan',
+    });
 
     // 4. Private Home Maktabah Bookshelf (asset_maktabah)
     const shelfG = new THREE.Group();
@@ -500,7 +575,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
       }
     }
     place(shelfG, shelfX, 0, shelfZ);
-    registerUpgrade('asset_maktabah', shelfG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'maktabah',
+      group: shelfG,
+      baseX: shelfX,
+      baseY: 0,
+      baseZ: shelfZ,
+      baseRotY: 0,
+      upgradeId: 'asset_maktabah',
+    });
 
     // 5. Solar Panel & Inverter System (asset_solar)
     const solarG = new THREE.Group();
@@ -512,7 +596,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     const panel = box(solarG, 2.2, 0.08, 1.3, 0x1d4ed8, 0, 2.65, -0.3, { metal: 0.6, rough: 0.2 });
     panel.rotation.x = 0.32;
     place(solarG, solarX, 0, solarZ);
-    registerUpgrade('asset_solar', solarG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'solar',
+      group: solarG,
+      baseX: solarX,
+      baseY: 0,
+      baseZ: solarZ,
+      baseRotY: 0,
+      upgradeId: 'asset_solar',
+    });
 
     // 6. Raleigh Scholar Bicycle (asset_bicycle) parked outside front door
     const bikeG = new THREE.Group();
@@ -527,7 +620,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     box(bikeG, 0.12, 0.06, 0.48, 0xcbd5e1, 0.45, 0.96, 0); // Handlebars
     box(bikeG, 0.28, 0.07, 0.18, 0x27272a, -0.38, 0.84, 0); // Saddle
     place(bikeG, bikeX, 0, bikeZ);
-    registerUpgrade('asset_bicycle', bikeG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'bicycle',
+      group: bikeG,
+      baseX: bikeX,
+      baseY: 0,
+      baseZ: bikeZ,
+      baseRotY: 0,
+      upgradeId: 'asset_bicycle',
+    });
 
     // 7. Bajaj Boxer Motorcycle (asset_okada) parked outside front door
     const motoG = new THREE.Group();
@@ -546,7 +648,16 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     mLight.position.set(0.68, 0.94, 0);
     motoG.add(mLight);
     place(motoG, bikeX + 2.4, 0, bikeZ);
-    registerUpgrade('asset_okada', motoG);
+    registerFurniture({
+      tierId,
+      furnitureKey: 'okada',
+      group: motoG,
+      baseX: bikeX + 2.4,
+      baseY: 0,
+      baseZ: bikeZ,
+      baseRotY: 0,
+      upgradeId: 'asset_okada',
+    });
   };
 
   // ---------- 1. 3D DAILY CLASSROOM HALL (cx = 31, cz = -12, 18m x 13m) ----------
@@ -589,23 +700,35 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   buildRoomShell(51, -12, 13, 12, 0xfef3c7, 0x92400e, 0xe7d8c1, 3.4, 2.0);
   sign(scene, '1. RUWAQ BOARDING DORM (STARTER HOME)', 5.6, 0.62, '#78350f', '#fde68a', 51, 3.35, -6.0);
   // Default straw sleeping mat in your corner (x = 46.8, z = -15.5)
-  strip(46.8, -15.5, 1.8, 2.5, 0xd4a373, 0.03);
-  box(scene, 1.1, 0.1, 0.38, 0x92400e, 46.8, 0.06, -16.4); // Wooden pillow rest
+  const ruwaqBed = new THREE.Group();
+  box(ruwaqBed, 1.8, 0.04, 2.5, 0xd4a373, 0, 0.02, 0, { cast: false });
+  box(ruwaqBed, 1.1, 0.1, 0.38, 0x92400e, 0, 0.06, -0.9); // Wooden pillow rest
+  place(ruwaqBed, 46.8, 0, -15.5);
+  registerFurniture({
+    tierId: 'ruwaq',
+    furnitureKey: 'bed',
+    group: ruwaqBed,
+    baseX: 46.8,
+    baseY: 0,
+    baseZ: -15.5,
+    baseRotY: 0,
+    defaultFor: 'asset_mattress',
+  });
   // Roommates' mats on the east wall (Moruf & Bilal)
   for (const rz of [-15.8, -12.6, -9.4]) {
     strip(55.2, rz, 1.7, 2.2, 0xcab388, 0.03);
     box(scene, 0.95, 0.42, 0.55, 0x334155, 56.3, 0.21, rz); // Roommate trunk box
   }
   // Your basic study desk & wooden chair (upgraded when asset_desk is bought)
-  buildStudyDeskUnit(46.8, -11.5, 0x8d5a2b, 0x78350f);
+  buildStudyDeskUnit('ruwaq', 46.8, -11.5, 0x8d5a2b, 0x78350f);
   // Your Sajjadah Prayer Rug (x = 51.0, z = -15.6)
-  buildPrayerRug(51.0, -15.6, 0x14532d, 0xfacc15);
+  buildPrayerRug('ruwaq', 51.0, -15.6, 0x14532d, 0xfacc15);
   // Your Metal Trunk Box Wardrobe (x = 46.6, z = -8.0)
-  buildWardrobe(46.6, -8.0, true);
+  buildWardrobe('ruwaq', 46.6, -8.0, true);
   // Caretaker / Housing Upgrade Ledger Table by door (x = 54.8, z = -7.2)
   box(scene, 1.3, 0.75, 0.7, 0x78350f, 54.8, 0.38, -7.2);
   sign(scene, 'FURNISH & UPGRADE HOME', 1.8, 0.35, '#92400e', '#fde68a', 54.8, 1.15, -7.2);
-  attachHouseUpgrades(46.8, -15.5, 46.8, -11.5, 48.5, -16.8, 45.2, -11.5, 49.0, -17.5, 47.2, -4.5);
+  attachHouseUpgrades('ruwaq', 46.8, -15.5, 46.8, -11.5, 48.5, -16.8, 45.2, -11.5, 49.0, -17.5, 47.2, -4.5);
 
   // ---------- 3. HOUSE TIER 2: OFF-CAMPUS STUDENT ROOM, EJIGBO (cx = 69, cz = -12, 13m x 12m) ----------
   buildRoomShell(69, -12, 13, 12, 0xe0f2fe, 0x0369a1, 0xf1f5f9, 3.4, 2.1);
@@ -613,18 +736,30 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   // Decorative center rug
   strip(69, -12, 4.5, 4.5, 0x0284c7, 0.028);
   // Wooden Bed Frame in corner (x = 64.8, z = -15.5)
-  box(scene, 1.85, 0.32, 2.45, 0x5c2e14, 64.8, 0.16, -15.5);
-  box(scene, 1.7, 0.16, 2.3, 0x93c5fd, 64.8, 0.38, -15.5);
+  const sharedBed = new THREE.Group();
+  box(sharedBed, 1.85, 0.32, 2.45, 0x5c2e14, 0, 0.16, 0);
+  box(sharedBed, 1.7, 0.16, 2.3, 0x93c5fd, 0, 0.38, 0);
+  place(sharedBed, 64.8, 0, -15.5);
+  registerFurniture({
+    tierId: 'shared_room',
+    furnitureKey: 'bed',
+    group: sharedBed,
+    baseX: 64.8,
+    baseY: 0,
+    baseZ: -15.5,
+    baseRotY: 0,
+    defaultFor: 'asset_mattress',
+  });
   // Study Table & Chair spot (x = 64.8, z = -11.5)
-  buildStudyDeskUnit(64.8, -11.5, 0x78350f, 0x5c2e14);
+  buildStudyDeskUnit('shared_room', 64.8, -11.5, 0x78350f, 0x5c2e14);
   // Sajjadah Prayer Rug (x = 73.2, z = -15.5)
-  buildPrayerRug(73.2, -15.5, 0x1e3a8a, 0xfde047);
+  buildPrayerRug('shared_room', 73.2, -15.5, 0x1e3a8a, 0xfde047);
   // Tall Wooden Wardrobe (x = 64.6, z = -8.0)
-  buildWardrobe(64.6, -8.0, false);
+  buildWardrobe('shared_room', 64.6, -8.0, false);
   // Housing & Lease Table (x = 73.0, z = -7.5)
   box(scene, 1.3, 0.75, 0.7, 0x0369a1, 73.0, 0.38, -7.5);
   sign(scene, 'LEASE & FURNISHINGS', 1.8, 0.35, '#0369a1', '#ffffff', 73.0, 1.15, -7.5);
-  attachHouseUpgrades(64.8, -15.5, 64.8, -11.5, 66.6, -16.8, 63.2, -11.5, 67.2, -17.5, 65.2, -4.5);
+  attachHouseUpgrades('shared_room', 64.8, -15.5, 64.8, -11.5, 66.6, -16.8, 63.2, -11.5, 67.2, -17.5, 65.2, -4.5);
 
   // ---------- 4. HOUSE TIER 3: SELF-CONTAINED MINI-FLAT, OKE-AFA (cx = 89, cz = -12, 16m x 13m) ----------
   buildRoomShell(89, -12, 16, 13, 0xffedd5, 0xc2410c, 0xfef3c7, 3.8, 2.2);
@@ -639,19 +774,31 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   box(scene, 2.6, 0.9, 0.75, 0x78350f, 93.2, 0.45, -17.6);
   box(scene, 0.85, 1.85, 0.8, 0xcbd5e1, 95.4, 0.92, -17.5, { metal: 0.5, rough: 0.3 });
   // Master Bed (x = 83.8, z = -15.8)
-  box(scene, 2.1, 0.38, 2.5, 0x451a03, 83.8, 0.19, -15.8);
-  box(scene, 2.1, 1.1, 0.18, 0x451a03, 83.8, 0.55, -17.0);
-  box(scene, 1.95, 0.22, 2.35, 0xfef08a, 83.8, 0.45, -15.7);
+  const flatBed = new THREE.Group();
+  box(flatBed, 2.1, 0.38, 2.5, 0x451a03, 0, 0.19, 0);
+  box(flatBed, 2.1, 1.1, 0.18, 0x451a03, 0, 0.55, -1.2);
+  box(flatBed, 1.95, 0.22, 2.35, 0xfef08a, 0, 0.45, 0.1);
+  place(flatBed, 83.8, 0, -15.8);
+  registerFurniture({
+    tierId: 'mini_flat',
+    furnitureKey: 'bed',
+    group: flatBed,
+    baseX: 83.8,
+    baseY: 0,
+    baseZ: -15.8,
+    baseRotY: 0,
+    defaultFor: 'asset_mattress',
+  });
   // Study Corner & Chair (x = 83.8, z = -11.5)
-  buildStudyDeskUnit(83.8, -11.5, 0x5c2e14, 0x451a03);
+  buildStudyDeskUnit('mini_flat', 83.8, -11.5, 0x5c2e14, 0x451a03);
   // Prayer Rug (x = 88.2, z = -16.2)
-  buildPrayerRug(88.2, -16.2, 0x065f46, 0xf59e0b);
+  buildPrayerRug('mini_flat', 88.2, -16.2, 0x065f46, 0xf59e0b);
   // Tall Wardrobe (x = 83.5, z = -7.8)
-  buildWardrobe(83.5, -7.8, false);
+  buildWardrobe('mini_flat', 83.5, -7.8, false);
   // Real Estate & Flat Management Table (x = 94.2, z = -7.2)
   box(scene, 1.4, 0.75, 0.75, 0xc2410c, 94.2, 0.38, -7.2);
   sign(scene, 'FLAT & ASSET MANAGER', 1.9, 0.35, '#c2410c', '#ffffff', 94.2, 1.15, -7.2);
-  attachHouseUpgrades(83.8, -15.8, 83.8, -11.5, 86.0, -17.2, 82.0, -11.5, 86.8, -17.8, 85.0, -4.0);
+  attachHouseUpgrades('mini_flat', 83.8, -15.8, 83.8, -11.5, 86.0, -17.2, 82.0, -11.5, 86.8, -17.8, 85.0, -4.0);
 
   // ---------- 5. HOUSE TIER 4: SHEIKH'S PERSONAL VILLA / DUPLEX (cx = 113, cz = -12, 20m x 15m) ----------
   buildRoomShell(113, -12, 20, 15, 0xecfdf5, 0x047857, 0xfef9c3, 4.6, 2.4);
@@ -662,21 +809,33 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   box(scene, 3.8, 0.6, 0.9, 0x1e3a8a, 118.2, 0.3, -16.8);
   box(scene, 3.8, 0.35, 0.2, 0xfacc15, 118.2, 0.72, -17.15);
   // Royal Master Four-Poster Bed (Left Wing, x = 106.2, z = -16.2)
-  box(scene, 2.4, 0.45, 2.7, 0x451a03, 106.2, 0.22, -16.2);
-  box(scene, 2.25, 0.25, 2.55, 0x10b981, 106.2, 0.52, -16.2);
+  const villaBed = new THREE.Group();
+  box(villaBed, 2.4, 0.45, 2.7, 0x451a03, 0, 0.22, 0);
+  box(villaBed, 2.25, 0.25, 2.55, 0x10b981, 0, 0.52, 0);
   for (const [px, pz] of [[-1.1, -1.25], [1.1, -1.25], [-1.1, 1.25], [1.1, 1.25]]) {
-    cyl(scene, 0.05, 0.05, 2.2, 0xd97706, 106.2 + px, 1.1, -16.2 + pz, 8);
+    cyl(villaBed, 0.05, 0.05, 2.2, 0xd97706, px, 1.1, pz, 8);
   }
+  place(villaBed, 106.2, 0, -16.2);
+  registerFurniture({
+    tierId: 'personal_villa',
+    furnitureKey: 'bed',
+    group: villaBed,
+    baseX: 106.2,
+    baseY: 0,
+    baseZ: -16.2,
+    baseRotY: 0,
+    defaultFor: 'asset_mattress',
+  });
   // Executive Scholar's Study & Maktabah with Chair (x = 106.2, z = -11.5)
-  buildStudyDeskUnit(106.2, -11.5, 0x451a03, 0x3b1d0e);
+  buildStudyDeskUnit('personal_villa', 106.2, -11.5, 0x451a03, 0x3b1d0e);
   // Grand Mihrab Prayer Chamber (x = 112.5, z = -16.5)
-  buildPrayerRug(112.5, -16.5, 0x064e3b, 0xfacc15);
+  buildPrayerRug('personal_villa', 112.5, -16.5, 0x064e3b, 0xfacc15);
   // Walk-in Royal Wardrobe (x = 105.8, z = -6.8)
-  buildWardrobe(105.8, -6.8, false);
+  buildWardrobe('personal_villa', 105.8, -6.8, false);
   // Villa Estate Ledger Table (x = 119.5, z = -6.5)
   box(scene, 1.5, 0.78, 0.8, 0x047857, 119.5, 0.39, -6.5);
   sign(scene, 'VILLA ESTATE & ASSETS', 2.0, 0.38, '#065f46', '#fde047', 119.5, 1.2, -6.5);
-  attachHouseUpgrades(106.2, -16.2, 106.2, -11.5, 108.5, -17.8, 104.0, -11.5, 110.0, -18.5, 108.5, -3.2);
+  attachHouseUpgrades('personal_villa', 106.2, -16.2, 106.2, -11.5, 108.5, -17.8, 104.0, -11.5, 110.0, -18.5, 108.5, -3.2);
 
   // ---------- PHYSICAL LOCKED DOORS FOR UNOWNED HOUSES ----------
   interface HouseGate {
@@ -1197,19 +1356,55 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     { robe: 0x1e293b, trim: 0xfbbf24, cap: 'fila', capColor: 0xfbbf24, beard: 0x555555, skin: 0x4a2c17 },
     ['Looking for a self-con or personal duplex?', 'Inspect every house along this street — from Ruwaq to the Sheikh\'s Villa!', 'Buy a mattress, standing fan, or solar inverter and see it inside your room!']);
 
-  const syncUpgrades = (upgrades: string[]) => {
+  const syncUpgrades = (
+    upgrades: string[],
+    activeTier: string,
+    furnitureLayout?: Record<string, FurnitureTransform>,
+    mountVehicle?: MountVehicle,
+  ) => {
     const owned = new Set(upgrades);
-    Object.entries(upgradeMap).forEach(([id, objs]) => {
-      const vis = owned.has(id);
-      objs.forEach((o) => {
-        o.visible = vis;
-      });
-    });
-    Object.entries(defaultUpgradeMap).forEach(([id, objs]) => {
-      const replaced = owned.has(id);
-      objs.forEach((o) => {
-        o.visible = !replaced;
-      });
+    const layout = furnitureLayout || {};
+
+    furnitureRegistry.forEach((item) => {
+      const isCurrentHouse = item.tierId === activeTier;
+
+      if (item.upgradeId) {
+        // Upgrade asset (only in active house, and only if owned)
+        if (!isCurrentHouse || !owned.has(item.upgradeId)) {
+          item.group.visible = false;
+          return;
+        }
+        // If riding the vehicle, hide the parked version outside the house
+        if (item.furnitureKey === 'bicycle' && mountVehicle === 'bicycle') {
+          item.group.visible = false;
+          return;
+        }
+        if (item.furnitureKey === 'okada' && mountVehicle === 'okada') {
+          item.group.visible = false;
+          return;
+        }
+        item.group.visible = true;
+      } else if (item.defaultFor) {
+        // Default piece (e.g. basic desk or sleeping mat)
+        const replaced = isCurrentHouse && owned.has(item.defaultFor);
+        item.group.visible = !replaced;
+      } else {
+        item.group.visible = true;
+      }
+
+      // Apply movable & turnable offsets for the active house
+      if (isCurrentHouse && layout[item.furnitureKey]) {
+        const tf = layout[item.furnitureKey];
+        item.group.position.x = item.baseX + (tf.dx || 0);
+        item.group.position.y = item.baseY;
+        item.group.position.z = item.baseZ + (tf.dz || 0);
+        item.group.rotation.y = item.baseRotY + (tf.rot || 0);
+      } else {
+        item.group.position.x = item.baseX;
+        item.group.position.y = item.baseY;
+        item.group.position.z = item.baseZ;
+        item.group.rotation.y = item.baseRotY;
+      }
     });
   };
 
@@ -1251,5 +1446,5 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     });
   };
 
-  return { colliders, vehicles, rideBus, lampMats, windowMats, headMats, npcs, fanRotors, syncUpgrades, syncHouseAccess, dispose };
+  return { colliders, vehicles, rideBus, lampMats, windowMats, headMats, npcs, fanRotors, syncUpgrades, syncHouseAccess, furnitureRegistry, dispose };
 }

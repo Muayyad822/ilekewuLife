@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   PlayerProfile,
   PlayerStats,
@@ -17,6 +18,8 @@ import {
   SubjectId,
   OnlinePeer,
   GameChallenge,
+  MountVehicle,
+  FurnitureTransform,
 } from '@/types/game';
 import { GAME_EVENTS } from '@/data/events';
 import {
@@ -81,6 +84,8 @@ interface GameState {
 
   // Firebase & Multiplayer state
   authUser: AuthUserSummary | null;
+  authChecked: boolean;
+  isGuest: boolean;
   cloudSynced: boolean;
   lastSyncedAt: number | null;
   onlinePeers: OnlinePeer[];
@@ -97,16 +102,23 @@ interface GameState {
   errand: ErrandState | null;
   lastAdhanPrayer: string;
   rally: number;
-  roomOverlay: 'none' | 'home_dashboard' | 'classroom_lesson';
+  roomOverlay: 'none' | 'home_dashboard' | 'classroom_lesson' | 'arrange_furniture';
   activeClassroomSubject: SubjectId;
+  mount: MountVehicle;
+  selectedFurniture: string;
+  lastWorldTab: 'compound' | 'classroom' | 'home';
 
   // Actions
+  setMount: (mount: MountVehicle) => void;
+  setSelectedFurniture: (id: string) => void;
+  updateFurnitureTransform: (itemId: string, transform: Partial<FurnitureTransform>) => void;
+  resetFurnitureLayout: () => void;
   chooseOption: (choice: EventChoice) => void;
   nextDay: () => void;
   restAtHome: () => { ok: boolean; msg: string };
   prayInRoom: () => string;
   studyAtDesk: () => string;
-  setRoomOverlay: (overlay: 'none' | 'home_dashboard' | 'classroom_lesson') => void;
+  setRoomOverlay: (overlay: 'none' | 'home_dashboard' | 'classroom_lesson' | 'arrange_furniture') => void;
   openClassroomSubject: (subject: SubjectId) => void;
   toggleMute: () => void;
   setActiveTab: (tab: TabId) => void;
@@ -133,6 +145,8 @@ interface GameState {
     avatarUrl?: string;
   }) => void;
   setAuthUser: (user: AuthUserSummary | null) => void;
+  setAuthChecked: (checked: boolean) => void;
+  setIsGuest: (isGuest: boolean) => void;
   setOnlinePeers: (peers: OnlinePeer[]) => void;
   setChallenges: (challenges: GameChallenge[]) => void;
   setMinbarPosts: (posts: MinbarPost[]) => void;
@@ -172,6 +186,7 @@ const INITIAL_HOUSING: PlayerHousing = {
   ownership: 'boarding',
   rentDueInDays: 0,
   upgrades: [],
+  furnitureLayout: {},
 };
 
 const INITIAL_EDUCATION: PlayerEducation = {
@@ -313,24 +328,75 @@ export const CAMPUS_ONLINE_SCHOLARS: OnlinePeer[] = [
 
 const clamp = (v: number) => Math.min(100, Math.max(0, v));
 
-export const useGameStore = create<GameState>((set, get) => ({
-  player: INITIAL_PLAYER,
-  housing: INITIAL_HOUSING,
-  education: INITIAL_EDUCATION,
-  currentEvent: null,
-  minbarPosts: INITIAL_MINBAR_POSTS,
-  isMuted: false,
-  activeTab: 'compound',
-  hour: 7,
-  weather: DEFAULT_WEATHER,
-  solatTimings: DEFAULT_LAGOS_TIMINGS,
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+export function triggerAutoSave() {
+  if (typeof window === 'undefined') return;
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    useGameStore.getState().syncToCloud();
+  }, 1200);
+}
 
-  authUser: null,
-  cloudSynced: false,
-  lastSyncedAt: null,
-  onlinePeers: CAMPUS_ONLINE_SCHOLARS,
-  challenges: [],
-  greetedPeerIds: [],
+export const useGameStore = create<GameState>()(
+  persist(
+    (set, get) => ({
+      player: INITIAL_PLAYER,
+      housing: INITIAL_HOUSING,
+      education: INITIAL_EDUCATION,
+      currentEvent: null,
+      minbarPosts: INITIAL_MINBAR_POSTS,
+      isMuted: false,
+      activeTab: 'compound',
+      hour: 7,
+      weather: DEFAULT_WEATHER,
+      solatTimings: DEFAULT_LAGOS_TIMINGS,
+
+      authUser: null,
+      authChecked: false,
+      isGuest: false,
+      cloudSynced: false,
+      lastSyncedAt: null,
+      onlinePeers: CAMPUS_ONLINE_SCHOLARS,
+      challenges: [],
+      greetedPeerIds: [],
+
+      setAuthChecked: (authChecked) => set({ authChecked }),
+      setIsGuest: (isGuest) => set({ isGuest }),
+
+      mount: 'none' as MountVehicle,
+      setMount: (mount) => set({ mount }),
+
+      updateFurnitureTransform: (itemId, transform) => {
+        const { housing } = get();
+        const curLayout = housing.furnitureLayout ?? {};
+        const curItem = curLayout[itemId] ?? { dx: 0, dz: 0, rot: 0 };
+        const nextItem: FurnitureTransform = {
+          dx: transform.dx !== undefined ? Math.min(4.5, Math.max(-4.5, transform.dx)) : curItem.dx,
+          dz: transform.dz !== undefined ? Math.min(4.5, Math.max(-4.5, transform.dz)) : curItem.dz,
+          rot: transform.rot !== undefined ? transform.rot : curItem.rot,
+        };
+        set({
+          housing: {
+            ...housing,
+            furnitureLayout: {
+              ...curLayout,
+              [itemId]: nextItem,
+            },
+          },
+        });
+        triggerAutoSave();
+      },
+
+      resetFurnitureLayout: () => {
+        const { housing } = get();
+        set({
+          housing: {
+            ...housing,
+            furnitureLayout: {},
+          },
+        });
+        triggerAutoSave();
+      },
 
   owned: [...DEFAULT_OWNED],
   outfit: { ...DEFAULT_OUTFIT },
@@ -343,7 +409,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   rally: 0,
   roomOverlay: 'none',
   activeClassroomSubject: 'nahw',
+  selectedFurniture: 'desk',
+  lastWorldTab: 'compound',
 
+  setSelectedFurniture: (selectedFurniture) => set({ selectedFurniture }),
   setHour: (hour) => set({ hour }),
   setWeather: (weather) => set({ weather }),
   setSolatTimings: (solatTimings) => set({ solatTimings }),
@@ -352,7 +421,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   openClassroomSubject: (subject) => set({ activeClassroomSubject: subject, roomOverlay: 'classroom_lesson' }),
 
   setActiveTab: (tab) => {
-    set({ activeTab: tab, activity: null, roomOverlay: 'none' });
+    const isWorldTab = tab === 'compound' || tab === 'classroom' || tab === 'home';
+    set((state) => ({
+      activeTab: tab,
+      lastWorldTab: isWorldTab ? tab : state.lastWorldTab || 'compound',
+      activity: null,
+      roomOverlay: 'none',
+    }));
     const { authUser, player, housing, outfit } = get();
     if (authUser) {
       updatePresenceStatus({
@@ -436,12 +511,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         name: updates.name?.trim() ? updates.name.trim() : player.name,
         gender: nextGender,
         madrasahName: updates.madrasahName?.trim() ? updates.madrasahName.trim() : player.madrasahName,
-        avatarUrl: updates.avatarUrl ?? player.avatarUrl,
+        avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : player.avatarUrl,
       },
       outfit: nextOutfit,
       outfitRevision: get().outfitRevision + 1,
     });
-    setTimeout(() => get().syncToCloud(), 100);
+    triggerAutoSave();
   },
 
   spend: (cost, changes, log) => {
@@ -1186,4 +1261,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       outfitRevision: get().outfitRevision + 1,
     });
   },
-}));
+}),
+    {
+      name: 'ilekewu_scholar_save_v1',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        player: state.player,
+        housing: state.housing,
+        education: state.education,
+        owned: state.owned,
+        outfit: state.outfit,
+        outfitRevision: state.outfitRevision,
+        authUser: state.authUser,
+        lastSyncedAt: state.lastSyncedAt,
+      }),
+    },
+  ),
+);

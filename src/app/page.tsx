@@ -4,6 +4,7 @@ import React from 'react';
 import { LagosWorld } from '@/components/ThreeWorld/LagosWorld';
 import { TopLeftHud, TopRightHud, Dock, PanelDrawer } from '@/components/GameHud';
 import { ActivityModal } from '@/components/Activities';
+import { AuthGate } from '@/components/AuthGate';
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       <Dock />
       <PanelDrawer />
       <ActivityModal />
+      <AuthGate />
     </main>
   );
 }

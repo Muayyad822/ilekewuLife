@@ -14,7 +14,9 @@ export type Pose =
   | 'sleep'
   | 'recite'
   | 'wave'
-  | 'alfa';
+  | 'alfa'
+  | 'ride_bike'
+  | 'ride_moto';
 
 export interface CharacterOptions {
   robe: number;
@@ -202,6 +204,31 @@ export function buildCharacter(o: CharacterOptions): Character {
         tg.rz = -0.22;
         tg.headY = Math.sin(tt * 2.2) * 0.08; // Gentle nod while reading
         break;
+      case 'ride_bike': {
+        const S = Math.sin(tt * 12);
+        tg.sit = 0;
+        tg.bodyY = 0.05;
+        tg.lean = 0.26; // Leaning forward toward handlebars
+        tg.lx = -0.92;  // Left arm holding left handlebar
+        tg.rx = -0.92;  // Right arm holding right handlebar
+        tg.lz = 0.22;
+        tg.rz = -0.22;
+        tg.legL = S * 0.45;
+        tg.legR = -S * 0.45;
+        break;
+      }
+      case 'ride_moto': {
+        tg.sit = 0;
+        tg.bodyY = 0.06;
+        tg.lean = 0.18; // Upright confident posture
+        tg.lx = -0.86;
+        tg.rx = -0.86;
+        tg.lz = 0.28;
+        tg.rz = -0.28;
+        tg.legL = -0.35;
+        tg.legR = -0.35;
+        break;
+      }
       case 'sit':
         tg.sit = 1;
         tg.lx = -0.5;
@@ -303,7 +330,7 @@ export function buildCharacter(o: CharacterOptions): Character {
     head.rotation.y = cur.headY;
 
     const sittingOnFloor = cur.sit > 0.5 && pose !== 'chair_sit';
-    skirt.visible = sittingOnFloor && pose !== 'sleep';
+    skirt.visible = sittingOnFloor && pose !== 'sleep' && pose !== 'ride_bike' && pose !== 'ride_moto';
     legL.hip.visible = !sittingOnFloor;
     legR.hip.visible = !sittingOnFloor;
 
@@ -312,6 +339,16 @@ export function buildCharacter(o: CharacterOptions): Character {
       legR.hip.rotation.x = -Math.PI / 2 + 0.05;
       legL.knee.rotation.x = Math.PI / 2 - 0.05;
       legR.knee.rotation.x = Math.PI / 2 - 0.05;
+    } else if (pose === 'ride_bike') {
+      legL.hip.rotation.x = -0.7 + cur.legL * 0.4;
+      legR.hip.rotation.x = -0.7 + cur.legR * 0.4;
+      legL.knee.rotation.x = 0.75 - cur.legL * 0.4;
+      legR.knee.rotation.x = 0.75 - cur.legR * 0.4;
+    } else if (pose === 'ride_moto') {
+      legL.hip.rotation.x = -0.72;
+      legR.hip.rotation.x = -0.72;
+      legL.knee.rotation.x = 0.78;
+      legR.knee.rotation.x = 0.78;
     } else {
       legL.hip.rotation.x = cur.legL;
       legR.hip.rotation.x = cur.legR;
