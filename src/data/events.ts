@@ -79,31 +79,31 @@ export const GAME_EVENTS: GameEvent[] = [
     ],
   },
 
-  // 3. Washing the Wooden Slate (Walaah)
+  // 3. The Surah Al-Fil Recitation Check
   {
-    id: 'walaah_washing',
+    id: 'surah_fil_recitation',
     stage: 'omo_kewu',
-    title: 'The Sacred Walaah Washing Ritual',
-    arabicTitle: 'غَسْلُ اللَّوْحِ وَكِتَابَةُ الْآيَاتِ',
+    title: 'The Sacred Surah Al-Fil Recitation Check',
+    arabicTitle: 'تَسْمِيعُ سُورَةِ الْفِيلِ وَالْخَطُّ الْعَرَبِيُّ',
     category: 'learning',
-    description: 'You have finally recited Surah Al-Fil three times without a single mistake! Baba Kewu permits you to wash your wooden slate (Walaah) with sponge and cold water, let it dry under the bright sun, and prepare the soot ink (Tadaa) for the next Surah: Quraysh.',
+    description: 'You have finally recited Surah Al-Fil three times without a single mistake! Baba Kewu inspects your Arabic exercise notebook (Daftar) and permits you to copy out the next Surah: Quraysh, with full vowel marks (Harakat).',
     choices: [
       {
-        id: 'thorough_wash',
-        text: 'Wash the board spotless and brew fresh rich Tadaa ink from pot soot',
-        description: 'Excellence in calligraphy brings Barakah.',
+        id: 'thorough_calligraphy',
+        text: 'Write each verse neatly with crisp Naskh penmanship and double-check every Kasrah and Dammah',
+        description: 'Excellence in scholarship brings Barakah.',
         consequences: {
           statChanges: { ilm: +12, taqwa: +8, energy: -10 },
-          logMessage: 'Your calligraphy looks like an ancient illuminated manuscript. Baba Kewu smiled and praised your penmanship.',
+          logMessage: 'Your Arabic penmanship looks like an illuminated manuscript. Baba Kewu smiled and praised your precision.',
         },
       },
       {
-        id: 'quick_wipe',
-        text: 'Rinse it half-heartedly with dirty puddle water so you can go play football',
+        id: 'quick_scribble',
+        text: 'Scribble the verses hurriedly without vowel marks so you can go play football',
         description: 'The street match between Mushin Boys and Agege FC is starting in 10 minutes!',
         consequences: {
           statChanges: { energy: +10, pasanResistance: +5, ilm: -5, taqwa: -8 },
-          logMessage: 'The ink smeared into an illegible muddy mess. The monitor gave you 2 swift lashes with the cane.',
+          logMessage: 'Your handwriting was missing half the Harakat. The class monitor gave you 2 swift strokes on the palm.',
         },
       },
     ],

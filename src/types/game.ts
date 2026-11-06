@@ -12,7 +12,7 @@ export interface PlayerStats {
 export interface InventoryItem {
   id: string;
   name: string;
-  category: 'tool' | 'clothing' | 'book' | 'relic';
+  category: 'tool' | 'clothing' | 'book' | 'relic' | 'asset';
   icon: string;
   description: string;
   effectDescription: string;
@@ -44,6 +44,7 @@ export interface GameEvent {
 
 export interface MinbarPost {
   id: string;
+  authorId?: string;
   authorName: string;
   authorStage: LifeStage;
   text: string;
@@ -54,9 +55,31 @@ export interface MinbarPost {
   timestamp: number;
 }
 
+export type HousingTierId = 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa';
+
+export type HousingOwnership = 'boarding' | 'rented' | 'owned';
+
+export interface PlayerHousing {
+  tier: HousingTierId;
+  ownership: HousingOwnership;
+  rentDueInDays: number;
+  upgrades: string[]; // IDs of acquired home/lifestyle assets
+}
+
+export type SubjectId = 'nahw' | 'fiqh' | 'tajweed' | 'hadith' | 'seerah' | 'adab';
+
+export interface PlayerEducation {
+  completedDailyKeys: string[]; // e.g. "2026-11-05:nahw"
+  lastStudyDate: string;        // "YYYY-MM-DD"
+  totalLessonsCompleted: number;
+  subjectMastery: Record<SubjectId, number>; // 0-100 mastery per subject
+}
+
 export interface PlayerProfile {
   id: string;
   name: string;
+  email?: string;
+  avatarUrl?: string;
   gender: 'male' | 'female';
   stage: LifeStage;
   age: number;
@@ -69,14 +92,13 @@ export interface PlayerProfile {
   madrasahName: string;
 }
 
-
 export type Loc = 'school' | 'east' | 'west';
 
 export type ActivityId =
   | 'alfa' | 'ibtida' | 'well'
   | 'hifz' | 'huruf' | 'tutor' | 'wudu' | 'nahw'
   | 'adhan' | 'khutbah' | 'homelesson'
-  | 'shop' | 'bus'
+  | 'shop' | 'wardrobe' | 'bus'
   | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher';
 
 export interface Outfit {
@@ -84,7 +106,7 @@ export interface Outfit {
   trim: number;
   cap: 'kofia' | 'turban' | 'hijab' | 'fila' | 'none';
   capColor: number;
-  prop: 'slate' | 'cane' | 'kettle' | 'tesbih' | 'none';
+  prop: 'book' | 'cane' | 'kettle' | 'tesbih' | 'none';
 }
 
 export interface RideInfo {
@@ -97,4 +119,31 @@ export interface RideInfo {
 export interface ErrandState {
   stage: 'fetch' | 'deliver';
   startedAt: number;
+}
+
+export interface OnlinePeer {
+  uid: string;
+  name: string;
+  stage: LifeStage;
+  madrasahName: string;
+  ilm: number;
+  hifzJuz: number;
+  housingTier: HousingTierId;
+  currentTab: string;
+  lastSeen: number;
+  outfit?: Outfit;
+  isLive?: boolean;
+}
+
+export interface GameChallenge {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  toUid: string;
+  toName: string;
+  gameType: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
+  wager: number;
+  status: 'pending' | 'accepted' | 'completed' | 'declined';
+  winnerUid?: string;
+  createdAt: number;
 }

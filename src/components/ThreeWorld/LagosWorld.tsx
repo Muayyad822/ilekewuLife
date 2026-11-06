@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
 import { realHourNow, fetchLagosWeather, fetchLagosSolatTimings } from '@/lib/time';
-import { buildCharacter, Character } from './characterBuilder';
+import { buildCharacter, Character, Pose } from './characterBuilder';
 import { createWorld } from './worldBuilders';
 import { Hand, MessageSquare, X } from 'lucide-react';
 
@@ -17,6 +17,7 @@ interface Zone {
   z: number;
   radius: number;
   action: string;
+  isAvailable?: () => boolean;
   onInteract: () => string | void;
 }
 
@@ -70,10 +71,12 @@ export const LagosWorld: React.FC = () => {
   const joyKnobRef = useRef<HTMLDivElement>(null);
   const interactRef = useRef<() => void>(() => {});
   const emoteRef = useRef<() => void>(() => {});
+  const setPoseActionRef = useRef<(p: Pose) => void>(() => {});
 
+  const [activePose, setActivePose] = useState<Pose>('idle');
   const [nearby, setNearby] = useState<{ name: string; arabic: string; action: string } | null>(null);
   const [toast, setToast] = useState<string | null>(
-    'Assalamu alaikum! Walk with the Arrow Keys (↑ ↓ ← →) or joystick. Drag to rotate the camera. Press E to interact.',
+    'Arrow Keys / Joystick to walk · Drag to look · Press E to interact.',
   );
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,13 +88,13 @@ export const LagosWorld: React.FC = () => {
     const say = (text: string) => {
       setToast(text);
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToast(null), 5500);
+      toastTimer.current = setTimeout(() => setToast(null), 3800);
     };
 
     const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
     const coarseToast = coarse
       ? setTimeout(() => {
-          setToast('Assalamu alaikum! Use the joystick to walk (push to the edge to run). Drag to look, pinch to zoom. Tap the gold button to interact.');
+          setToast('Joystick to walk · Drag to look · Tap interact button.');
         }, 0)
       : null;
 
@@ -194,7 +197,7 @@ export const LagosWorld: React.FC = () => {
     };
     let playerChar: Character = makePlayer();
     scene.add(playerChar.group);
-    const pos = { x: 0, z: 3.8, rot: Math.PI };
+    const pos = { x: 0, y: 0, z: 3.8, rot: Math.PI };
     playerChar.group.position.set(pos.x, 0, pos.z);
     let lastOutfitRev = useGameStore.getState().outfitRevision;
 
@@ -226,7 +229,10 @@ export const LagosWorld: React.FC = () => {
       labels.push(l);
       return l;
     };
-    const KEY_NPCS = new Set(['alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan', 'zainab', 'baba_ayo']);
+    const KEY_NPCS = new Set([
+      'alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan', 'zainab', 'baba_ayo',
+      'ustadh_nahw', 'ustadh_fiqh', 'ustadh_quran', 'dorm_mate1', 'estate_agent',
+    ]);
     world.npcs.forEach((n) => {
       if (!KEY_NPCS.has(n.id)) return;
       const sitting = n.idlePose === 'recite' || n.idlePose === 'alfa' || n.idlePose === 'sit';
@@ -234,27 +240,157 @@ export const LagosWorld: React.FC = () => {
       makeLabel(n.name, n.title, n.char.group, (sitting ? 1.35 : 2.0) * s, n.lines);
     });
 
+    // Initial sync of 3D room furniture/upgrades & house locks
+    world.syncUpgrades(useGameStore.getState().housing.upgrades);
+    world.syncHouseAccess(useGameStore.getState().housing.tier);
+
     // ---------- Zones ----------
     const st = () => useGameStore.getState();
+    let customPose: Pose = 'idle';
+    const applyPose = (p: Pose, elevation?: number) => {
+      customPose = p;
+      if (elevation !== undefined) {
+        pos.y = elevation;
+      } else if (p === 'idle' || p === 'walk' || p === 'run') {
+        pos.y = 0;
+      }
+      setActivePose(p);
+    };
+    setPoseActionRef.current = applyPose;
+
+    // Helper to generate 3D interactive furniture hotspots inside each of the 4 3D Houses
+    const makeHouseZones = (
+      tierId: 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa',
+      houseLabel: string,
+      bedPos: [number, number],
+      deskPos: [number, number],
+      rugPos: [number, number],
+      wardrobePos: [number, number],
+      furnishPos: [number, number],
+    ): Zone[] => {
+      const canUse = () => st().housing.tier === tierId;
+      return [
+        {
+          id: `bed_${tierId}`,
+          name: `${houseLabel} · Bed`,
+          arabic: 'فِرَاشُ النَّوْمِ',
+          x: bedPos[0],
+          z: bedPos[1],
+          radius: 2.2,
+          action: 'Sleep & Rest',
+          isAvailable: canUse,
+          onInteract: () => {
+            const hasMattress = st().housing.upgrades.includes('asset_mattress');
+            const bedY = tierId === 'ruwaq'
+              ? (hasMattress ? 0.46 : 0.08)
+              : tierId === 'shared_room' ? 0.46
+              : tierId === 'mini_flat' ? 0.54
+              : 0.60;
+            pos.x = bedPos[0];
+            pos.z = bedPos[1];
+            pos.rot = 0;
+            applyPose('sleep', bedY);
+            const res = st().restAtHome();
+            return res.msg;
+          },
+        },
+        {
+          id: `desk_${tierId}`,
+          name: `${houseLabel} · Study Desk`,
+          arabic: 'مَكْتَبُ الْمُطَالَعَةِ',
+          x: deskPos[0],
+          z: deskPos[1],
+          radius: 2.1,
+          action: 'Sit & Study',
+          isAvailable: canUse,
+          onInteract: () => {
+            // Sit squarely on the study chair facing the desk
+            pos.x = deskPos[0];
+            pos.z = deskPos[1] + 0.68;
+            pos.rot = Math.PI;
+            applyPose('chair_sit', 0.46);
+            return st().studyAtDesk();
+          },
+        },
+        {
+          id: `rug_${tierId}`,
+          name: `${houseLabel} · Sajjadah`,
+          arabic: 'سَجَّادَةُ الصَّلَاةِ',
+          x: rugPos[0],
+          z: rugPos[1],
+          radius: 2.0,
+          action: 'Pray Salah',
+          isAvailable: canUse,
+          onInteract: () => {
+            pos.x = rugPos[0];
+            pos.z = rugPos[1] + 0.35;
+            pos.rot = Math.PI;
+            applyPose('pray', 0);
+            return st().prayInRoom();
+          },
+        },
+        {
+          id: `wardrobe_${tierId}`,
+          name: `${houseLabel} · Wardrobe`,
+          arabic: 'خِزَانَةُ الْمَلَابِسِ',
+          x: wardrobePos[0],
+          z: wardrobePos[1],
+          radius: 2.1,
+          action: 'Change Robe',
+          isAvailable: canUse,
+          onInteract: () => {
+            pos.x = wardrobePos[0];
+            pos.z = wardrobePos[1] + 1.1;
+            pos.rot = Math.PI;
+            applyPose('idle', 0);
+            st().setActivity('wardrobe');
+          },
+        },
+        {
+          id: `furnish_${tierId}`,
+          name: `${houseLabel} · Home Ledger`,
+          arabic: 'تَطْوِيرُ السَّكَنِ',
+          x: furnishPos[0],
+          z: furnishPos[1],
+          radius: 2.2,
+          action: 'Furnish & Real Estate',
+          isAvailable: canUse,
+          onInteract: () => {
+            pos.x = furnishPos[0];
+            pos.z = furnishPos[1] + 1.0;
+            pos.rot = Math.PI;
+            applyPose('idle', 0);
+            st().setRoomOverlay('home_dashboard');
+          },
+        },
+      ];
+    };
+
     const zones: Zone[] = [
       {
         id: 'alfa', name: "Baba Kewu's Seat", arabic: 'مَقْعَدُ الشَّيْخِ', x: 0, z: -2.6, radius: 2.2,
-        action: 'Hifz Verse Builder / Call Adhan',
-        onInteract: () => { st().setActivity('alfa'); },
+        action: 'Recite Hifz',
+        onInteract: () => {
+          pos.x = 0;
+          pos.z = -1.6;
+          pos.rot = Math.PI;
+          applyPose('kneel', 0);
+          st().setActivity('alfa');
+        },
       },
       {
         id: 'ibtida', name: "Ibtida'i Class Shed", arabic: 'فَصْلُ الِابْتِدَائِيِّ', x: -11.5, z: -3.2, radius: 2.8,
-        action: 'Huruf Speed Drill & Grade Slates (₦)',
+        action: 'Huruf & Check Juniors',
         onInteract: () => { st().setActivity('ibtida'); },
       },
       {
         id: 'adult', name: 'Adult / Markaziy Shed', arabic: 'فَصْلُ النَّحْوِ', x: 11.5, z: -3.2, radius: 2.6,
-        action: 'Study Al-Ajurrumiyyah (Arabic Grammar)',
+        action: 'Grammar Class',
         onInteract: () => { st().setActivity('nahw'); },
       },
       {
         id: 'ustadh', name: 'Ustadh Hamza', arabic: 'الأُسْتَاذُ حَمْزَة', x: 9.5, z: -3.5, radius: 2.0,
-        action: 'Amala Errand Hustle (Earn Tip ₦)',
+        action: 'Amala Errand (₦)',
         onInteract: () => {
           const e = st().errand;
           if (!e || e.stage === 'fetch') return st().startErrand();
@@ -263,19 +399,125 @@ export const LagosWorld: React.FC = () => {
       },
       {
         id: 'minaret', name: 'Mosque Minaret', arabic: 'المِئْذَنَة', x: 7.4, z: -5.5, radius: 2.4,
-        action: 'Call the Adhan (Summon Congregation)',
+        action: 'Call Adhan',
         onInteract: () => { st().setActivity('adhan'); },
       },
       {
-        id: 'halqah', name: 'Recitation Circle', arabic: 'حَلْقَةُ التِّلَاوَةِ', x: 0, z: 0.9, radius: 1.8,
-        action: 'Join the Tajweed Quiz Duel',
-        onInteract: () => { st().setActiveTab('quiz'); },
+        id: 'halqah', name: 'Daily Study Circle', arabic: 'حَلْقَةُ الدَّرْسِ اليَوْمِيِّ', x: 0, z: 0.9, radius: 1.8,
+        action: 'Enter Classroom',
+        onInteract: () => { st().setActiveTab('classroom'); },
       },
       {
         id: 'well', name: 'Ablution Well & Taps', arabic: 'بِئْرُ الْوُضُوءِ', x: -7, z: 1, radius: 2.7,
-        action: 'Wash Walaah Slate / Fiqh of Wudu',
-        onInteract: () => { st().setActivity('well'); },
+        action: 'Perform Wudu',
+        onInteract: () => {
+          pos.x = -6.4;
+          pos.z = 1.0;
+          pos.rot = -Math.PI / 2;
+          applyPose('crouch', 0);
+          st().setActivity('well');
+        },
       },
+      // --- 6 Subject Chalkboard Stations inside the 3D Daily Classroom Hall (x = 31, z = -12) ---
+      {
+        id: 'class_nahw', name: 'Nahw & Sarf', arabic: 'النَّحْوُ وَالصَّرْفُ', x: 25.2, z: -15.0, radius: 2.4,
+        action: 'Study Nahw',
+        onInteract: () => {
+          pos.x = 25.2 - 0.95;
+          pos.z = -16.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('nahw');
+        },
+      },
+      {
+        id: 'class_fiqh', name: 'Fiqh & Ibadah', arabic: 'الفِقْهُ وَالعِبَادَاتُ', x: 31.0, z: -15.0, radius: 2.4,
+        action: 'Study Fiqh',
+        onInteract: () => {
+          pos.x = 31.0 - 0.95;
+          pos.z = -16.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('fiqh');
+        },
+      },
+      {
+        id: 'class_tajweed', name: 'Qur’an & Tajweed', arabic: 'القُرْآنُ وَالتَّجْوِيدُ', x: 36.8, z: -15.0, radius: 2.4,
+        action: 'Study Tajweed',
+        onInteract: () => {
+          pos.x = 36.8 - 0.95;
+          pos.z = -16.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('tajweed');
+        },
+      },
+      {
+        id: 'class_hadith', name: 'Hadith & Sunnah', arabic: 'الحَدِيثُ الشَّرِيفُ', x: 25.2, z: -10.5, radius: 2.4,
+        action: 'Study Hadith',
+        onInteract: () => {
+          pos.x = 25.2 - 0.95;
+          pos.z = -9.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('hadith');
+        },
+      },
+      {
+        id: 'class_seerah', name: 'Seerah & Tarikh', arabic: 'السِّيرَةُ النَّبَوِيَّةُ', x: 31.0, z: -10.5, radius: 2.4,
+        action: 'Study Seerah',
+        onInteract: () => {
+          pos.x = 31.0 - 0.95;
+          pos.z = -9.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('seerah');
+        },
+      },
+      {
+        id: 'class_adab', name: 'Adab & Akhlaq', arabic: 'الأَدَبُ وَالأَخْلَاقُ', x: 36.8, z: -10.5, radius: 2.4,
+        action: 'Study Adab',
+        onInteract: () => {
+          pos.x = 36.8 - 0.95;
+          pos.z = -9.8 + 1.88;
+          pos.rot = Math.PI;
+          applyPose('recite', 0);
+          st().openClassroomSubject('adab');
+        },
+      },
+      // --- Locked Door Gates for Unowned Houses ---
+      {
+        id: 'gate_shared_room', name: 'Off-Campus Room (Locked)', arabic: 'غُرْفَةٌ مُغْلَقَةٌ', x: 69, z: -5.2, radius: 2.6,
+        action: '🔒 Rent (₦3.5k) or Buy (₦25k)',
+        isAvailable: () => st().housing.tier !== 'shared_room',
+        onInteract: () => {
+          st().setRoomOverlay('home_dashboard');
+          return 'Rent or buy the Off-Campus Room to unlock this door.';
+        },
+      },
+      {
+        id: 'gate_mini_flat', name: 'Self-Con Mini-Flat (Locked)', arabic: 'شَقَّةٌ مُغْلَقَةٌ', x: 89, z: -4.8, radius: 2.8,
+        action: '🔒 Rent (₦12k) or Buy (₦95k)',
+        isAvailable: () => st().housing.tier !== 'mini_flat',
+        onInteract: () => {
+          st().setRoomOverlay('home_dashboard');
+          return 'Rent or buy the Self-Contained Mini-Flat to unlock this door.';
+        },
+      },
+      {
+        id: 'gate_personal_villa', name: "Sheikh's Villa (Locked)", arabic: 'قَصْرٌ مُغْلَقٌ', x: 113, z: -3.8, radius: 3.0,
+        action: '🔒 Rent (₦35k) or Buy (₦350k)',
+        isAvailable: () => st().housing.tier !== 'personal_villa',
+        onInteract: () => {
+          st().setRoomOverlay('home_dashboard');
+          return "Rent or buy the Sheikh's Villa to unlock this residence.";
+        },
+      },
+      // --- Interactive 3D Furniture inside the 4 Walkable 3D Houses (Gated by Active Tier) ---
+      ...makeHouseZones('ruwaq', 'Ruwaq Dorm', [46.8, -15.5], [46.8, -11.5], [51.0, -15.6], [46.6, -8.0], [54.8, -7.2]),
+      ...makeHouseZones('shared_room', 'Off-Campus Room', [64.8, -15.5], [64.8, -11.5], [73.2, -15.5], [64.6, -8.0], [73.0, -7.5]),
+      ...makeHouseZones('mini_flat', 'Mini-Flat', [83.8, -15.8], [83.8, -11.5], [88.2, -16.2], [83.5, -7.8], [94.2, -7.2]),
+      ...makeHouseZones('personal_villa', "Sheikh's Villa", [106.2, -16.2], [106.2, -11.5], [112.5, -16.5], [105.8, -6.8], [119.5, -6.5]),
       {
         id: 'saraa', name: 'Friday Saraa Canopy', arabic: 'مَائِدَةُ الصَّدَقَةِ', x: 8, z: 3.4, radius: 2.8,
         action: 'Take a free plate of jollof (+Energy)',
@@ -390,6 +632,12 @@ export const LagosWorld: React.FC = () => {
       keys[k] = true;
       if (k === 'e' || k === 'enter') interactRef.current();
       if (k === 'g') emoteRef.current();
+      if (k === '1') applyPose('idle', 0);
+      if (k === '2') applyPose('sit', 0);
+      if (k === '3') applyPose('crouch', 0);
+      if (k === '4') applyPose('kneel', 0);
+      if (k === '5') applyPose('pray', 0);
+      if (k === '6') applyPose('sleep', 0);
       if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -465,11 +713,67 @@ export const LagosWorld: React.FC = () => {
       harmattanSky: new THREE.Color(0xd6c4a8),
     };
 
-    // Pause the simulation (and save battery) while a panel covers the world
-    let paused = st().activeTab !== 'compound' || st().activity !== null;
+    const HOUSE_SPAWN: Record<string, { x: number; z: number; label: string }> = {
+      ruwaq: { x: 51, z: -8.2, label: 'Ruwaq Madrasah Dormitory' },
+      shared_room: { x: 69, z: -8.8, label: 'Off-Campus Student Room' },
+      mini_flat: { x: 89, z: -8.2, label: 'Self-Contained Mini-Flat' },
+      personal_villa: { x: 113, z: -7.2, label: "Sheikh's Personal Duplex Villa" },
+    };
+
+    const teleportTo = (nx: number, nz: number, nrot = Math.PI, camDist = 9.0) => {
+      pos.x = nx;
+      pos.y = 0;
+      pos.z = nz;
+      pos.rot = nrot;
+      playerChar.group.position.set(pos.x, pos.y, pos.z);
+      playerChar.group.rotation.y = pos.rot;
+      target.set(pos.x, 1.3, pos.z);
+      cam.yaw = 0;
+      cam.pitch = 0.62;
+      cam.dist = camDist;
+    };
+
+    let lastTab = st().activeTab;
+    let lastTier = st().housing.tier;
+    let lastUpgradesKey = st().housing.upgrades.join(',');
+
+    // Pause the simulation only when a full modal/drawer covers the world; keep 3D active for School, Classroom & Home!
+    const isWorldPaused = (s: ReturnType<typeof useGameStore.getState>) =>
+      s.activeTab === 'profile' || s.activeTab === 'minbar' || s.activity !== null || s.roomOverlay !== 'none';
+
+    let paused = isWorldPaused(st());
     const unsub = useGameStore.subscribe((s) => {
-      paused = s.activeTab !== 'compound' || s.activity !== null;
+      paused = isWorldPaused(s);
       if (paused) joyRef.current = { x: 0, y: 0 };
+
+      // Sync 3D room upgrades whenever player buys furniture/assets
+      const nextUpgradesKey = s.housing.upgrades.join(',');
+      if (nextUpgradesKey !== lastUpgradesKey) {
+        lastUpgradesKey = nextUpgradesKey;
+        world.syncUpgrades(s.housing.upgrades);
+      }
+
+      if (s.housing.tier !== lastTier) {
+        world.syncHouseAccess(s.housing.tier);
+      }
+
+      // Teleport player into the 3D Classroom Hall, 3D House, or School Compound when tab or house tier changes
+      if (s.activeTab !== lastTab || (s.activeTab === 'home' && s.housing.tier !== lastTier)) {
+        const tabChanged = s.activeTab !== lastTab;
+        lastTab = s.activeTab;
+        lastTier = s.housing.tier;
+        applyPose('idle');
+
+        if (s.activeTab === 'classroom' && tabChanged) {
+          teleportTo(31, -7.2, Math.PI, 9.2);
+        } else if (s.activeTab === 'home') {
+          const dest = HOUSE_SPAWN[s.housing.tier] || HOUSE_SPAWN.ruwaq;
+          teleportTo(dest.x, dest.z, Math.PI, 8.8);
+        } else if (s.activeTab === 'compound' && tabChanged) {
+          teleportTo(0, 3.8, Math.PI, 11);
+        }
+      }
+
       if (s.outfitRevision !== lastOutfitRev) {
         lastOutfitRev = s.outfitRevision;
         scene.remove(playerChar.group);
@@ -646,14 +950,28 @@ export const LagosWorld: React.FC = () => {
               }
             }
           }
+          // Enforce locked house interiors so players cannot enter houses they haven't rented or bought
+          const curTier = st().housing.tier;
+          if (curTier !== 'shared_room' && pos.x > 62.5 && pos.x < 75.5 && pos.z < -5.8 && pos.z > -18.2) {
+            pos.z = -5.2;
+          }
+          if (curTier !== 'mini_flat' && pos.x > 81.0 && pos.x < 97.0 && pos.z < -5.3 && pos.z > -18.8) {
+            pos.z = -4.7;
+          }
+          if (curTier !== 'personal_villa' && pos.x > 103.0 && pos.x < 123.0 && pos.z < -4.3 && pos.z > -19.8) {
+            pos.z = -3.7;
+          }
+
           pos.x = THREE.MathUtils.clamp(pos.x, X_MIN, X_MAX);
           pos.z = THREE.MathUtils.clamp(pos.z, Z_MIN + 0.5, Z_MAX - 0.5);
           pos.rot += shortestAngle(pos.rot, Math.atan2(dx, dz)) * Math.min(1, dt * 12);
+          pos.y = 0;
+          if (customPose !== 'idle') applyPose('idle', 0);
           playerChar.setPose(sprint ? 'run' : 'walk');
         } else {
-          playerChar.setPose(time < emoteUntil ? 'wave' : 'idle');
+          playerChar.setPose(time < emoteUntil ? 'wave' : customPose);
         }
-        playerChar.group.position.set(pos.x, 0, pos.z);
+        playerChar.group.position.set(pos.x, pos.y, pos.z);
         playerChar.group.rotation.y = pos.rot;
         playerChar.update(time, dt);
       }
@@ -680,7 +998,10 @@ export const LagosWorld: React.FC = () => {
         n.char.update(time, dt);
       }
 
-      // --- vehicles ---
+      // --- vehicles & room fans ---
+      for (const rotor of world.fanRotors) {
+        rotor.rotation.y += dt * 11;
+      }
       for (const v of world.vehicles) {
         v.group.position.x += v.dir * v.speed * dt;
         if (v.dir === 1 && v.group.position.x > v.maxX) v.group.position.x = v.minX;
@@ -690,7 +1011,7 @@ export const LagosWorld: React.FC = () => {
       }
 
       // --- camera ---
-      target.lerp(tmpV.set(pos.x, 1.3, pos.z), 1 - Math.exp(-dt * 8));
+      target.lerp(tmpV.set(pos.x, 1.3 + (pos.y || 0) * 0.4, pos.z), 1 - Math.exp(-dt * 8));
       const cp = Math.cos(cam.pitch);
       camera.position.set(
         target.x + Math.sin(cam.yaw) * cp * cam.dist,
@@ -704,6 +1025,7 @@ export const LagosWorld: React.FC = () => {
       let best: Zone | null = null;
       let bestScore = Infinity;
       for (const z of zones) {
+        if (z.isAvailable && !z.isAvailable()) continue;
         const d = Math.hypot(pos.x - z.x, pos.z - z.z);
         if (d <= z.radius && d / z.radius < bestScore) {
           best = z;
@@ -754,6 +1076,17 @@ export const LagosWorld: React.FC = () => {
         mapCtx.fillRect(0, 0, MAP_W, MAP_H);
         mapCtx.fillStyle = '#6b5a3a';
         mapCtx.fillRect(mx(-16), mz(-12), mx(16) - mx(-16), mz(6) - mz(-12));
+        // 3D Classroom Hall & 4 Residential Houses on Minimap
+        mapCtx.fillStyle = '#0d9488';
+        mapCtx.fillRect(mx(22), mz(-18.5), mx(40) - mx(22), mz(-5.5) - mz(-18.5));
+        mapCtx.fillStyle = '#b45309';
+        mapCtx.fillRect(mx(44.5), mz(-17.5), mx(57.5) - mx(44.5), mz(-6.5) - mz(-17.5));
+        mapCtx.fillStyle = '#0284c7';
+        mapCtx.fillRect(mx(63.5), mz(-17), mx(74.5) - mx(63.5), mz(-7) - mz(-17));
+        mapCtx.fillStyle = '#7c3aed';
+        mapCtx.fillRect(mx(82), mz(-18), mx(96) - mx(82), mz(-6) - mz(-18));
+        mapCtx.fillStyle = '#eab308';
+        mapCtx.fillRect(mx(104), mz(-19), mx(122) - mx(104), mz(-5) - mz(-19));
         mapCtx.fillStyle = '#16a34a';
         mapCtx.fillRect(mx(-30), mz(-8.5), mx(-19) - mx(-30), mz(4.5) - mz(-8.5));
         mapCtx.fillStyle = '#8a6a3a';
@@ -882,15 +1215,15 @@ export const LagosWorld: React.FC = () => {
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 84px)' }}
         >
           {errand.stage === 'fetch'
-            ? "🍲 Errand: Go to Iya Basira's Buka across the road to collect Ustadh Hamza's hot amala!"
-            : '🏃‍♂️ Errand: Hurry back to Ustadh Hamza with the steaming amala before it cools!'}
+            ? "🍲 Fetch Amala from Iya Basira's Buka"
+            : '🏃‍♂️ Deliver Amala to Ustadh Hamza'}
         </div>
       )}
 
       {/* Toast / commentary */}
       {toast && (
         <div
-          className="kw-glass-strong kw-pop absolute left-1/2 -translate-x-1/2 w-[min(92vw,460px)] px-4 py-3 flex items-start gap-3 text-[13px] leading-snug"
+          className="kw-glass-strong kw-pop absolute left-1/2 -translate-x-1/2 w-[min(92vw,420px)] px-3.5 py-2.5 flex items-start gap-2.5 text-xs leading-snug"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 88px)' }}
         >
           <MessageSquare className="w-4 h-4 mt-0.5 shrink-0 text-kw-gold" />
@@ -903,7 +1236,7 @@ export const LagosWorld: React.FC = () => {
 
       {/* Interaction prompt (mouse / keyboard) */}
       {nearby && (
-        <div className="kw-pointer-only kw-glass-strong kw-pop absolute left-1/2 bottom-24 -translate-x-1/2 px-4 py-3 flex-col items-center gap-2 text-center max-w-[92vw]">
+        <div className="kw-pointer-only kw-glass-strong kw-pop absolute left-1/2 bottom-24 -translate-x-1/2 px-4 py-2.5 flex-col items-center gap-1.5 text-center max-w-[92vw]">
           <div className="kw-label">
             {nearby.name} · <span dir="rtl" className="font-serif normal-case tracking-normal text-sm">{nearby.arabic}</span>
           </div>
@@ -915,14 +1248,40 @@ export const LagosWorld: React.FC = () => {
         </div>
       )}
 
-      {/* Controls hint (mouse / keyboard) */}
-      <div className="kw-pointer-only kw-glass absolute left-3 bottom-3 items-center gap-3 px-3 py-2 text-[11px] text-kw-cream-dim pointer-events-none">
-        <span><b className="text-kw-gold-soft">↑ ↓ ← →</b> move</span>
-        <span><b className="text-kw-gold-soft">Shift</b> run</span>
-        <span><b className="text-kw-gold-soft">Drag</b> look</span>
-        <span><b className="text-kw-gold-soft">Scroll</b> zoom</span>
-        <span><b className="text-kw-gold-soft">E</b> interact</span>
-        <span><b className="text-kw-gold-soft">G</b> salaam</span>
+      {/* Character Posture & Action Bar */}
+      <div className="kw-glass absolute left-3 bottom-3 hidden sm:flex items-center gap-1 px-2 py-1.5 text-[11px]">
+        {(
+          [
+            ['idle', '🧍 Stand', '1'],
+            ['sit', '🪑 Sit', '2'],
+            ['crouch', '🧎 Crouch', '3'],
+            ['kneel', '🤲 Kneel', '4'],
+            ['pray', '🕌 Pray', '5'],
+            ['sleep', '🛌 Lie', '6'],
+          ] as [Pose, string, string][]
+        ).map(([poseKey, label, keyHint]) => (
+          <button
+            key={poseKey}
+            onClick={() => setPoseActionRef.current(poseKey)}
+            className={`px-2 py-1 rounded-lg font-bold cursor-pointer transition flex items-center gap-1 ${
+              activePose === poseKey
+                ? 'bg-kw-gold text-stone-950 shadow-2xs'
+                : 'text-kw-cream-dim hover:text-white hover:bg-white/10'
+            }`}
+            title={`Shortcut: ${keyHint}`}
+          >
+            <span>{label}</span>
+            <kbd className="text-[9px] opacity-60">{keyHint}</kbd>
+          </button>
+        ))}
+        <button
+          onClick={() => emoteRef.current()}
+          className="px-2 py-1 rounded-lg font-bold text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+          title="Shortcut: G"
+        >
+          <span>👋 Wave</span>
+          <kbd className="text-[9px] opacity-60">G</kbd>
+        </button>
       </div>
 
       {/* Touch controls: joystick (left) */}

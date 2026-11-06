@@ -36,6 +36,9 @@ export interface WorldHandles {
   windowMats: THREE.MeshStandardMaterial[];
   headMats: THREE.MeshStandardMaterial[];
   npcs: NPC[];
+  fanRotors: THREE.Object3D[];
+  syncUpgrades: (upgrades: string[]) => void;
+  syncHouseAccess: (activeTier: string) => void;
   dispose: () => void;
 }
 
@@ -74,8 +77,22 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   const lampMats: THREE.MeshStandardMaterial[] = [];
   const windowMats: THREE.MeshStandardMaterial[] = [];
   const headMats: THREE.MeshStandardMaterial[] = [];
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 0.2 });
+  headMats.push(headMat);
   const npcs: NPC[] = [];
   const extras: THREE.Object3D[] = [];
+  const fanRotors: THREE.Object3D[] = [];
+  const upgradeMap: Record<string, THREE.Object3D[]> = {};
+  const registerUpgrade = (id: string, obj: THREE.Object3D) => {
+    if (!upgradeMap[id]) upgradeMap[id] = [];
+    obj.visible = false;
+    upgradeMap[id].push(obj);
+  };
+  const defaultUpgradeMap: Record<string, THREE.Object3D[]> = {};
+  const registerDefaultUnit = (upgradeId: string, obj: THREE.Object3D) => {
+    if (!defaultUpgradeMap[upgradeId]) defaultUpgradeMap[upgradeId] = [];
+    defaultUpgradeMap[upgradeId].push(obj);
+  };
 
   const mat = (color: number, rough = 0.85, metal = 0) => {
     const key = `${color}-${rough}-${metal}`;
@@ -163,7 +180,9 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   wall(-9.25, 6, 13.5, 0.5);
   wall(9.25, 6, 13.5, 0.5);
   wall(-16, -3, 0.5, 18.5);
-  wall(16, -3, 0.5, 18.5);
+  // East wall with a wide scholar archway leading to the 3D Classroom Hall & Residential Quarters
+  wall(16, -7.25, 0.5, 9.5);
+  wall(16, 3.75, 0.5, 4.5);
   wall(0, -12, 32.5, 0.5);
 
   const pillar = (x: number) => {
@@ -296,6 +315,400 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   sign(gen, 'I BETTER PASS MY NEIGHBOUR', 1.5, 0.4, '#222', '#ffc61a', 0, 0.7, 0.52);
   place(gen, 13, 0, 3.5);
   solid(13, 3.5, 0.85, 0.55);
+
+  // ===================== WALKABLE 3D CLASSROOM HALL & 4 RESIDENTIAL HOUSES =====================
+  // Paved Scholars Avenue connecting Compound -> Classroom Hall -> Ruwaq -> Student Room -> Mini-Flat -> Villa
+  strip(74, -2.5, 116, 4.2, 0xd6c7b2, 0.018);
+
+  // Helper to build a cutaway open-top room shell with a front doorway at (cx, cz + d/2)
+  const buildRoomShell = (
+    cx: number,
+    cz: number,
+    w: number,
+    d: number,
+    wallColor: number,
+    trimColor: number,
+    floorColor: number,
+    doorWidth = 3.2,
+    wallH = 2.1,
+  ) => {
+    strip(cx, cz, w - 0.3, d - 0.3, floorColor, 0.022);
+    const wMat = mat(wallColor, 0.88);
+    const tMat = mat(trimColor, 0.7);
+    const wallSeg = (wx: number, wz: number, ww: number, wd: number, h = wallH) => {
+      box(scene, ww, h, wd, 0, wx, h / 2, wz, { material: wMat });
+      box(scene, ww + 0.06, 0.14, wd + 0.06, 0, wx, h + 0.07, wz, { material: tMat });
+      solid(wx, wz, ww / 2, wd / 2);
+    };
+    // Back wall (North, z = cz - d/2)
+    wallSeg(cx, cz - d / 2, w, 0.36, wallH + 0.4);
+    // Left & Right cutaway walls (height 1.55m so orbit camera never gets blocked)
+    wallSeg(cx - w / 2, cz, 0.36, d, 1.55);
+    wallSeg(cx + w / 2, cz, 0.36, d, 1.55);
+    // Front wall with doorway gap
+    const sideW = (w - doorWidth) / 2;
+    wallSeg(cx - w / 2 + sideW / 2, cz + d / 2, sideW, 0.36, 1.45);
+    wallSeg(cx + w / 2 - sideW / 2, cz + d / 2, sideW, 0.36, 1.45);
+    // Doorway pillars & overhead sign arch
+    for (const s of [-1, 1]) {
+      cyl(scene, 0.16, 0.18, 2.9, trimColor, cx + s * (doorWidth / 2), 1.45, cz + d / 2, 10);
+    }
+    box(scene, doorWidth + 0.6, 0.28, 0.45, trimColor, cx, 2.95, cz + d / 2);
+  };
+
+  // Helper to build a 3D Prayer Rug (Sajjadah)
+  const buildPrayerRug = (x: number, z: number, color = 0x0d6b4c, border = 0xf5b335) => {
+    strip(x, z, 1.35, 2.1, border, 0.03);
+    strip(x, z, 1.15, 1.85, color, 0.034);
+    // Mihrab arch pattern pointing North/East
+    const arch = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.38, 12, 1, 0, Math.PI), mat(border, 0.8));
+    arch.rotation.x = -Math.PI / 2;
+    arch.position.set(x, 0.038, z - 0.55);
+    scene.add(arch);
+  };
+
+  // Helper to build a 3D Wardrobe / Trunk Box station
+  const buildWardrobe = (x: number, z: number, isTrunk = false) => {
+    const g = new THREE.Group();
+    if (isTrunk) {
+      // Classic boarding school metal trunk box (Apoti Irin) + hanging peg rack
+      box(g, 1.3, 0.55, 0.75, 0x1d4ed8, 0, 0.28, 0, { metal: 0.5, rough: 0.4 });
+      box(g, 1.34, 0.08, 0.79, 0xfacc15, 0, 0.54, 0, { metal: 0.6 });
+      box(g, 0.18, 0.14, 0.06, 0xfacc15, 0, 0.38, 0.39);
+    } else {
+      // Tall wooden 2-door wardrobe
+      box(g, 1.4, 2.1, 0.7, 0x5d3a1a, 0, 1.05, 0);
+      box(g, 0.64, 1.9, 0.05, 0x7c4d25, -0.34, 1.05, 0.36);
+      box(g, 0.64, 1.9, 0.05, 0x7c4d25, 0.34, 1.05, 0.36);
+      cyl(g, 0.03, 0.03, 0.18, 0xfacc15, -0.08, 1.05, 0.4, 6);
+      cyl(g, 0.03, 0.03, 0.18, 0xfacc15, 0.08, 1.05, 0.4, 6);
+    }
+    place(g, x, 0, z);
+    solid(x, z, 0.7, 0.4);
+  };
+
+  // Helper to build a complete default Study Desk & Chair set before asset_desk upgrade
+  const buildStudyDeskUnit = (x: number, z: number, tableColor = 0x78350f, chairColor = 0x5c2e14) => {
+    const g = new THREE.Group();
+    // Desk table
+    box(g, 1.3, 0.72, 0.75, tableColor, 0, 0.36, 0);
+    // Open notebook & pen
+    box(g, 0.36, 0.03, 0.25, 0xfef3c7, -0.2, 0.74, 0.02);
+    // Wooden Study Chair (seat top surface at y = 0.495)
+    box(g, 0.55, 0.07, 0.52, chairColor, 0, 0.46, 0.68);
+    box(g, 0.55, 0.52, 0.07, chairColor, 0, 0.75, 0.92);
+    for (const [cx, cz] of [[-0.22, 0.46], [0.22, 0.46], [-0.22, 0.88], [0.22, 0.88]]) {
+      cyl(g, 0.035, 0.03, 0.45, 0x3b1d0e, cx, 0.22, cz, 6);
+    }
+    place(g, x, 0, z);
+    registerDefaultUnit('asset_desk', g);
+    return g;
+  };
+
+  // Helper to build dynamic 3D Lifestyle Assets inside a house so purchased items physically appear in 3D!
+  const attachHouseUpgrades = (
+    bedX: number,
+    bedZ: number,
+    deskX: number,
+    deskZ: number,
+    fanX: number,
+    fanZ: number,
+    shelfX: number,
+    shelfZ: number,
+    solarX: number,
+    solarZ: number,
+    bikeX: number,
+    bikeZ: number,
+  ) => {
+    // 1. Orthopedic Foam Mattress & Mosquito Net Canopy (asset_mattress)
+    const mattG = new THREE.Group();
+    box(mattG, 1.75, 0.34, 2.35, 0x1e40af, 0, 0.22, 0); // Thick blue Mouka foam base
+    box(mattG, 1.68, 0.08, 2.25, 0xf8fafc, 0, 0.41, 0); // Quilted white sheet
+    box(mattG, 1.2, 0.16, 0.45, 0xffffff, 0, 0.5, -0.82); // Fluffy pillow
+    box(mattG, 1.7, 0.09, 1.1, 0x10b981, 0, 0.46, 0.45); // Emerald duvet
+    for (const [px, pz] of [[-0.82, -1.1], [0.82, -1.1], [-0.82, 1.1], [0.82, 1.1]]) {
+      cyl(mattG, 0.025, 0.025, 1.85, 0xe2e8f0, px, 0.95, pz, 6);
+    }
+    box(mattG, 1.7, 0.04, 2.25, 0xe0f2fe, 0, 1.88, 0);
+    place(mattG, bedX, 0, bedZ);
+    registerUpgrade('asset_mattress', mattG);
+
+    // 2. Mahogany Study Desk, Chair & Glowing LED Lantern (asset_desk)
+    const deskG = new THREE.Group();
+    box(deskG, 1.5, 0.1, 0.85, 0x4a2511, 0, 0.78, 0);
+    for (const [lx, lz] of [[-0.65, -0.35], [0.65, -0.35], [-0.65, 0.35], [0.65, 0.35]]) {
+      cyl(deskG, 0.05, 0.04, 0.76, 0x3b1d0e, lx, 0.38, lz, 6);
+    }
+    // Open Mushaf & notebook on desk
+    box(deskG, 0.42, 0.04, 0.3, 0x059669, -0.25, 0.85, 0.05);
+    box(deskG, 0.38, 0.05, 0.26, 0xfef3c7, -0.25, 0.87, 0.05);
+    // Rechargeable LED Lantern
+    cyl(deskG, 0.09, 0.11, 0.12, 0xd97706, 0.42, 0.89, -0.15, 8);
+    const lanternBulb = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, 0.22, 10),
+      new THREE.MeshStandardMaterial({ color: 0xfffbeb, emissive: 0xfde047, emissiveIntensity: 1.6 }),
+    );
+    lanternBulb.position.set(0.42, 1.05, -0.15);
+    deskG.add(lanternBulb);
+    // Wooden Study Chair
+    box(deskG, 0.55, 0.07, 0.52, 0x5c2e14, 0, 0.46, 0.68);
+    box(deskG, 0.55, 0.52, 0.07, 0x5c2e14, 0, 0.75, 0.92);
+    for (const [cx, cz] of [[-0.22, 0.46], [0.22, 0.46], [-0.22, 0.88], [0.22, 0.88]]) {
+      cyl(deskG, 0.035, 0.03, 0.45, 0x3b1d0e, cx, 0.22, cz, 6);
+    }
+    place(deskG, deskX, 0, deskZ);
+    registerUpgrade('asset_desk', deskG);
+
+    // 3. Standing OX Fan with Spinning Blades (asset_fan)
+    const fanG = new THREE.Group();
+    cyl(fanG, 0.28, 0.32, 0.08, 0x1e293b, 0, 0.04, 0, 14);
+    cyl(fanG, 0.035, 0.04, 1.35, 0x94a3b8, 0, 0.72, 0, 8);
+    box(fanG, 0.2, 0.2, 0.26, 0x0284c7, 0, 1.42, -0.04);
+    const rotor = new THREE.Group();
+    rotor.position.set(0, 1.42, 0.12);
+    for (let b = 0; b < 3; b++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.36, 0.02), mat(0x38bdf8, 0.4));
+      blade.position.y = 0.16;
+      const pivot = new THREE.Group();
+      pivot.rotation.z = (b * Math.PI * 2) / 3;
+      pivot.add(blade);
+      rotor.add(pivot);
+    }
+    fanG.add(rotor);
+    fanRotors.push(rotor);
+    place(fanG, fanX, 0, fanZ);
+    registerUpgrade('asset_fan', fanG);
+
+    // 4. Private Home Maktabah Bookshelf (asset_maktabah)
+    const shelfG = new THREE.Group();
+    box(shelfG, 1.65, 2.15, 0.42, 0x451a03, 0, 1.08, 0);
+    for (let s = 0; s < 4; s++) {
+      const sy = 0.35 + s * 0.48;
+      box(shelfG, 1.52, 0.05, 0.38, 0x78350f, 0, sy, 0.02);
+      const bookColors = [0x059669, 0xb91c1c, 0x1d4ed8, 0xd97706, 0x7c3aed, 0x0f766e];
+      for (let k = -5; k <= 5; k++) {
+        box(
+          shelfG,
+          0.1,
+          0.34,
+          0.28,
+          bookColors[Math.abs(k + s) % bookColors.length],
+          k * 0.12,
+          sy + 0.19,
+          0.04,
+        );
+      }
+    }
+    place(shelfG, shelfX, 0, shelfZ);
+    registerUpgrade('asset_maktabah', shelfG);
+
+    // 5. Solar Panel & Inverter System (asset_solar)
+    const solarG = new THREE.Group();
+    // Wall-mounted white inverter + tubular battery bank
+    box(solarG, 0.55, 0.72, 0.25, 0xf8fafc, 0, 1.25, 0);
+    box(solarG, 0.14, 0.08, 0.27, 0x10b981, 0, 1.38, 0.01); // Glowing green LED screen
+    box(solarG, 0.75, 0.48, 0.42, 0x1e293b, 0, 0.24, 0.1); // Deep-cycle battery
+    // Angled blue rooftop solar panel above back wall
+    const panel = box(solarG, 2.2, 0.08, 1.3, 0x1d4ed8, 0, 2.65, -0.3, { metal: 0.6, rough: 0.2 });
+    panel.rotation.x = 0.32;
+    place(solarG, solarX, 0, solarZ);
+    registerUpgrade('asset_solar', solarG);
+
+    // 6. Raleigh Scholar Bicycle (asset_bicycle) parked outside front door
+    const bikeG = new THREE.Group();
+    for (const wx of [-0.55, 0.55]) {
+      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.04, 8, 18), mat(0x1e293b, 0.8));
+      wheel.position.set(wx, 0.34, 0);
+      bikeG.add(wheel);
+    }
+    box(bikeG, 0.95, 0.05, 0.05, 0x059669, 0, 0.56, 0); // Frame top bar
+    cyl(bikeG, 0.03, 0.03, 0.65, 0x059669, -0.45, 0.55, 0, 6);
+    cyl(bikeG, 0.03, 0.03, 0.75, 0x059669, 0.45, 0.62, 0, 6);
+    box(bikeG, 0.12, 0.06, 0.48, 0xcbd5e1, 0.45, 0.96, 0); // Handlebars
+    box(bikeG, 0.28, 0.07, 0.18, 0x27272a, -0.38, 0.84, 0); // Saddle
+    place(bikeG, bikeX, 0, bikeZ);
+    registerUpgrade('asset_bicycle', bikeG);
+
+    // 7. Bajaj Boxer Motorcycle (asset_okada) parked outside front door
+    const motoG = new THREE.Group();
+    for (const wx of [-0.72, 0.72]) {
+      const tire = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.09, 10, 18), mat(0x18181b, 0.85));
+      tire.position.set(wx, 0.38, 0);
+      motoG.add(tire);
+      cyl(motoG, 0.16, 0.16, 0.12, 0x94a3b8, wx, 0.38, 0, 10);
+    }
+    box(motoG, 0.68, 0.34, 0.38, 0xdc2626, 0.15, 0.82, 0, { metal: 0.4, rough: 0.3 }); // Red fuel tank
+    box(motoG, 0.78, 0.16, 0.34, 0x18181b, -0.42, 0.76, 0); // Black dual seat
+    box(motoG, 0.45, 0.32, 0.3, 0x52525b, 0.05, 0.48, 0); // Engine block
+    cyl(motoG, 0.04, 0.04, 0.75, 0xd4d4d8, 0.55, 0.72, 0, 8); // Front fork
+    box(motoG, 0.12, 0.07, 0.68, 0xd4d4d8, 0.52, 1.12, 0); // Handlebars
+    const mLight = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), headMat);
+    mLight.position.set(0.68, 0.94, 0);
+    motoG.add(mLight);
+    place(motoG, bikeX + 2.4, 0, bikeZ);
+    registerUpgrade('asset_okada', motoG);
+  };
+
+  // ---------- 1. 3D DAILY CLASSROOM HALL (cx = 31, cz = -12, 18m x 13m) ----------
+  buildRoomShell(31, -12, 18, 13, 0xe0f2fe, 0x047857, 0xfef3c7, 4.2, 2.2);
+  sign(scene, 'MADRASAH DAILY CLASSROOM HALL (6 SUBJECTS)', 6.8, 0.68, '#047857', '#fde68a', 31, 3.45, -5.45);
+  // Central emerald classroom carpet
+  strip(31, -12, 15.5, 10.2, 0x065f46, 0.026);
+  strip(31, -12, 14.5, 9.2, 0x047857, 0.03);
+
+  // 6 Subject Stations inside the 3D Classroom Hall
+  const subjectStations: {
+    x: number;
+    z: number;
+    label: string;
+    bg: string;
+    rug: number;
+    faceSouth: boolean;
+  }[] = [
+    { x: 25.2, z: -16.8, label: '1. NAHW & SARF (GRAMMAR)', bg: '#0284c7', rug: 0x0369a1, faceSouth: true },
+    { x: 31.0, z: -16.8, label: '2. FIQH & IBADAH', bg: '#d97706', rug: 0xb45309, faceSouth: true },
+    { x: 36.8, z: -16.8, label: '3. QUR’AN & TAJWEED', bg: '#059669', rug: 0x047857, faceSouth: true },
+    { x: 25.2, z: -9.8, label: '4. HADITH & SUNNAH', bg: '#7c3aed', rug: 0x6d28d9, faceSouth: true },
+    { x: 31.0, z: -9.8, label: '5. SEERAH & TARIKH', bg: '#be185d', rug: 0x9d174d, faceSouth: true },
+    { x: 36.8, z: -9.8, label: '6. ADAB & AKHLAQ', bg: '#0d9488', rug: 0x0f766e, faceSouth: true },
+  ];
+  subjectStations.forEach((st) => {
+    strip(st.x, st.z + 1.2, 4.4, 2.8, st.rug, 0.035);
+    // Standing Blackboard & Wooden Easel
+    box(scene, 3.4, 1.35, 0.1, 0x5c2e14, st.x, 1.45, st.z - 0.5);
+    box(scene, 3.2, 1.15, 0.12, 0x0f2e22, st.x, 1.45, st.z - 0.49);
+    sign(scene, st.label, 3.1, 0.42, st.bg, '#fffbeb', st.x, 2.32, st.z - 0.45);
+    // Low wooden Rehal student desks in front of the board
+    for (const dx of [-0.95, 0.95]) {
+      box(scene, 0.75, 0.32, 0.45, 0x78350f, st.x + dx, 0.16, st.z + 1.45);
+      box(scene, 0.42, 0.05, 0.3, 0xfef3c7, st.x + dx, 0.35, st.z + 1.45);
+    }
+  });
+
+  // ---------- 2. HOUSE TIER 1: RUWAQ MADRASAH BOARDING DORM (cx = 51, cz = -12, 13m x 12m) ----------
+  buildRoomShell(51, -12, 13, 12, 0xfef3c7, 0x92400e, 0xe7d8c1, 3.4, 2.0);
+  sign(scene, '1. RUWAQ BOARDING DORM (STARTER HOME)', 5.6, 0.62, '#78350f', '#fde68a', 51, 3.35, -6.0);
+  // Default straw sleeping mat in your corner (x = 46.8, z = -15.5)
+  strip(46.8, -15.5, 1.8, 2.5, 0xd4a373, 0.03);
+  box(scene, 1.1, 0.1, 0.38, 0x92400e, 46.8, 0.06, -16.4); // Wooden pillow rest
+  // Roommates' mats on the east wall (Moruf & Bilal)
+  for (const rz of [-15.8, -12.6, -9.4]) {
+    strip(55.2, rz, 1.7, 2.2, 0xcab388, 0.03);
+    box(scene, 0.95, 0.42, 0.55, 0x334155, 56.3, 0.21, rz); // Roommate trunk box
+  }
+  // Your basic study desk & wooden chair (upgraded when asset_desk is bought)
+  buildStudyDeskUnit(46.8, -11.5, 0x8d5a2b, 0x78350f);
+  // Your Sajjadah Prayer Rug (x = 51.0, z = -15.6)
+  buildPrayerRug(51.0, -15.6, 0x14532d, 0xfacc15);
+  // Your Metal Trunk Box Wardrobe (x = 46.6, z = -8.0)
+  buildWardrobe(46.6, -8.0, true);
+  // Caretaker / Housing Upgrade Ledger Table by door (x = 54.8, z = -7.2)
+  box(scene, 1.3, 0.75, 0.7, 0x78350f, 54.8, 0.38, -7.2);
+  sign(scene, 'FURNISH & UPGRADE HOME', 1.8, 0.35, '#92400e', '#fde68a', 54.8, 1.15, -7.2);
+  attachHouseUpgrades(46.8, -15.5, 46.8, -11.5, 48.5, -16.8, 45.2, -11.5, 49.0, -17.5, 47.2, -4.5);
+
+  // ---------- 3. HOUSE TIER 2: OFF-CAMPUS STUDENT ROOM, EJIGBO (cx = 69, cz = -12, 13m x 12m) ----------
+  buildRoomShell(69, -12, 13, 12, 0xe0f2fe, 0x0369a1, 0xf1f5f9, 3.4, 2.1);
+  sign(scene, '2. OFF-CAMPUS STUDENT ROOM (EJIGBO)', 5.6, 0.62, '#0369a1', '#f0f9ff', 69, 3.35, -6.0);
+  // Decorative center rug
+  strip(69, -12, 4.5, 4.5, 0x0284c7, 0.028);
+  // Wooden Bed Frame in corner (x = 64.8, z = -15.5)
+  box(scene, 1.85, 0.32, 2.45, 0x5c2e14, 64.8, 0.16, -15.5);
+  box(scene, 1.7, 0.16, 2.3, 0x93c5fd, 64.8, 0.38, -15.5);
+  // Study Table & Chair spot (x = 64.8, z = -11.5)
+  buildStudyDeskUnit(64.8, -11.5, 0x78350f, 0x5c2e14);
+  // Sajjadah Prayer Rug (x = 73.2, z = -15.5)
+  buildPrayerRug(73.2, -15.5, 0x1e3a8a, 0xfde047);
+  // Tall Wooden Wardrobe (x = 64.6, z = -8.0)
+  buildWardrobe(64.6, -8.0, false);
+  // Housing & Lease Table (x = 73.0, z = -7.5)
+  box(scene, 1.3, 0.75, 0.7, 0x0369a1, 73.0, 0.38, -7.5);
+  sign(scene, 'LEASE & FURNISHINGS', 1.8, 0.35, '#0369a1', '#ffffff', 73.0, 1.15, -7.5);
+  attachHouseUpgrades(64.8, -15.5, 64.8, -11.5, 66.6, -16.8, 63.2, -11.5, 67.2, -17.5, 65.2, -4.5);
+
+  // ---------- 4. HOUSE TIER 3: SELF-CONTAINED MINI-FLAT, OKE-AFA (cx = 89, cz = -12, 16m x 13m) ----------
+  buildRoomShell(89, -12, 16, 13, 0xffedd5, 0xc2410c, 0xfef3c7, 3.8, 2.2);
+  sign(scene, '3. SELF-CONTAINED MINI-FLAT (OKE-AFA)', 6.0, 0.62, '#c2410c', '#fff7ed', 89, 3.35, -5.5);
+  // Living Parlour L-Sofa & Rug (Right side of Mini-Flat, x = 93.2, z = -12.5)
+  strip(93.0, -12.5, 5.2, 5.2, 0x9a3412, 0.028);
+  box(scene, 2.8, 0.55, 0.85, 0x0f766e, 93.2, 0.28, -14.2);
+  box(scene, 2.8, 0.45, 0.22, 0x115e59, 93.2, 0.72, -14.52);
+  box(scene, 0.85, 0.55, 2.2, 0x0f766e, 95.2, 0.28, -12.8);
+  box(scene, 1.4, 0.4, 0.8, 0x451a03, 93.0, 0.2, -12.5); // Coffee table
+  // Kitchenette Counter & Silver Fridge (x = 94.8, z = -17.2)
+  box(scene, 2.6, 0.9, 0.75, 0x78350f, 93.2, 0.45, -17.6);
+  box(scene, 0.85, 1.85, 0.8, 0xcbd5e1, 95.4, 0.92, -17.5, { metal: 0.5, rough: 0.3 });
+  // Master Bed (x = 83.8, z = -15.8)
+  box(scene, 2.1, 0.38, 2.5, 0x451a03, 83.8, 0.19, -15.8);
+  box(scene, 2.1, 1.1, 0.18, 0x451a03, 83.8, 0.55, -17.0);
+  box(scene, 1.95, 0.22, 2.35, 0xfef08a, 83.8, 0.45, -15.7);
+  // Study Corner & Chair (x = 83.8, z = -11.5)
+  buildStudyDeskUnit(83.8, -11.5, 0x5c2e14, 0x451a03);
+  // Prayer Rug (x = 88.2, z = -16.2)
+  buildPrayerRug(88.2, -16.2, 0x065f46, 0xf59e0b);
+  // Tall Wardrobe (x = 83.5, z = -7.8)
+  buildWardrobe(83.5, -7.8, false);
+  // Real Estate & Flat Management Table (x = 94.2, z = -7.2)
+  box(scene, 1.4, 0.75, 0.75, 0xc2410c, 94.2, 0.38, -7.2);
+  sign(scene, 'FLAT & ASSET MANAGER', 1.9, 0.35, '#c2410c', '#ffffff', 94.2, 1.15, -7.2);
+  attachHouseUpgrades(83.8, -15.8, 83.8, -11.5, 86.0, -17.2, 82.0, -11.5, 86.8, -17.8, 85.0, -4.0);
+
+  // ---------- 5. HOUSE TIER 4: SHEIKH'S PERSONAL VILLA / DUPLEX (cx = 113, cz = -12, 20m x 15m) ----------
+  buildRoomShell(113, -12, 20, 15, 0xecfdf5, 0x047857, 0xfef9c3, 4.6, 2.4);
+  sign(scene, "4. DAR ASH-SHEIKH (PERSONAL VILLA · +₦2,500/DAY)", 7.2, 0.68, '#065f46', '#fde047', 113, 3.45, -4.5);
+  // Royal Majlis Reception & Courtyard Halqah (Right Wing, x = 118.2, z = -12.5)
+  strip(118.2, -12.5, 7.2, 8.5, 0x064e3b, 0.028);
+  strip(118.2, -12.5, 6.4, 7.6, 0x047857, 0.032);
+  box(scene, 3.8, 0.6, 0.9, 0x1e3a8a, 118.2, 0.3, -16.8);
+  box(scene, 3.8, 0.35, 0.2, 0xfacc15, 118.2, 0.72, -17.15);
+  // Royal Master Four-Poster Bed (Left Wing, x = 106.2, z = -16.2)
+  box(scene, 2.4, 0.45, 2.7, 0x451a03, 106.2, 0.22, -16.2);
+  box(scene, 2.25, 0.25, 2.55, 0x10b981, 106.2, 0.52, -16.2);
+  for (const [px, pz] of [[-1.1, -1.25], [1.1, -1.25], [-1.1, 1.25], [1.1, 1.25]]) {
+    cyl(scene, 0.05, 0.05, 2.2, 0xd97706, 106.2 + px, 1.1, -16.2 + pz, 8);
+  }
+  // Executive Scholar's Study & Maktabah with Chair (x = 106.2, z = -11.5)
+  buildStudyDeskUnit(106.2, -11.5, 0x451a03, 0x3b1d0e);
+  // Grand Mihrab Prayer Chamber (x = 112.5, z = -16.5)
+  buildPrayerRug(112.5, -16.5, 0x064e3b, 0xfacc15);
+  // Walk-in Royal Wardrobe (x = 105.8, z = -6.8)
+  buildWardrobe(105.8, -6.8, false);
+  // Villa Estate Ledger Table (x = 119.5, z = -6.5)
+  box(scene, 1.5, 0.78, 0.8, 0x047857, 119.5, 0.39, -6.5);
+  sign(scene, 'VILLA ESTATE & ASSETS', 2.0, 0.38, '#065f46', '#fde047', 119.5, 1.2, -6.5);
+  attachHouseUpgrades(106.2, -16.2, 106.2, -11.5, 108.5, -17.8, 104.0, -11.5, 110.0, -18.5, 108.5, -3.2);
+
+  // ---------- PHYSICAL LOCKED DOORS FOR UNOWNED HOUSES ----------
+  interface HouseGate {
+    tierId: string;
+    doorGroup: THREE.Group;
+    collider: Collider;
+    savedBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  }
+  const houseGates: HouseGate[] = [];
+  const addHouseGate = (tierId: string, cx: number, doorZ: number, doorW: number, priceLabel: string) => {
+    const g = new THREE.Group();
+    // Solid mahogany security door blocking the entrance when locked
+    box(g, doorW, 2.2, 0.22, 0x3e2723, 0, 1.1, 0);
+    // Gold padlock & handle bar
+    box(g, doorW * 0.8, 0.1, 0.28, 0xd97706, 0, 1.1, 0);
+    sign(g, `🔒 LOCKED · ${priceLabel}`, Math.min(3.2, doorW * 0.9), 0.42, '#7f1d1d', '#fde68a', 0, 1.65, 0.14);
+    place(g, cx, 0, doorZ);
+
+    const savedBounds = {
+      minX: cx - doorW / 2 - 0.3,
+      maxX: cx + doorW / 2 + 0.3,
+      minZ: doorZ - 0.45,
+      maxZ: doorZ + 0.45,
+    };
+    const collider: Collider = { ...savedBounds };
+    colliders.push(collider);
+    houseGates.push({ tierId, doorGroup: g, collider, savedBounds });
+  };
+
+  addHouseGate('shared_room', 69, -6.0, 3.4, 'RENT ₦3.5k / BUY ₦25k');
+  addHouseGate('mini_flat', 89, -5.5, 3.8, 'RENT ₦12k / BUY ₦95k');
+  addHouseGate('personal_villa', 113, -4.5, 4.6, 'RENT ₦35k / BUY ₦350k');
 
   // ===================== KEWU F.C. PING-PONG SOCCER PITCH (WEST LOT BESIDE COMPOUND) =====================
   const pitchX = -24.5;
@@ -594,8 +1007,8 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   for (let x = -252; x <= 252; x += 14) {
     building(x, 32, 9, 6 + rnd() * 7, 6, palette[Math.floor(rnd() * palette.length)], -1);
     building(x, -30, 9, 6 + rnd() * 9, 6, palette[Math.floor(rnd() * palette.length)], 1);
-    // Roadside shops/houses along the north side between the compound and far hubs
-    if (Math.abs(x) > 36 && Math.abs(x - 225) > 22 && Math.abs(x + 225) > 22) {
+    // Roadside shops/houses along the north side between the compound/residential strip and far hubs
+    if ((x < -36 || x > 135) && Math.abs(x - 225) > 22 && Math.abs(x + 225) > 22) {
       building(x, 1, 8, 4.5 + rnd() * 4, 5, palette[Math.floor(rnd() * palette.length)], 1);
     }
   }
@@ -605,9 +1018,6 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   }
 
   // ===================== VEHICLES =====================
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 0.2 });
-  headMats.push(headMat);
-
   const addWheel = (g: THREE.Group, wheels: THREE.Group[], x: number, z: number, r: number) => {
     const p = new THREE.Group();
     p.position.set(x, r, z);
@@ -702,7 +1112,7 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
 
   addNPC('alfa', 'Baba Kewu', 'Grand Alfa', 0, -2.6, 0, 'alfa',
     { robe: 0x1b5e20, trim: 0xffd700, cap: 'turban', capColor: 0xffffff, beard: 0xe8e8e8, prop: 'cane', skin: 0x5d3a1a, scale: 1.08 },
-    ['Ta la\'a! Read it out loud!', 'Who has not washed his slate?', 'Ilm without adab is nothing.', 'Moruf! Stop sleeping!']);
+    ['Ta la\'a! Read it out loud!', 'Open your Mushaf to today\'s Surah!', 'Ilm without adab is nothing.', 'Moruf! Stop sleeping!']);
 
   const students: [string, string, number, number, number][] = [
     ['moruf', 'Moruf', -2.2, -0.5, 0xffffff], ['bilal', 'Bilal', -1.0, 0.9, 0x90caf9],
@@ -710,8 +1120,8 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   ];
   students.forEach(([id, name, x, z, c]) =>
     addNPC(id, name, 'Omo Kewu', x, z, Math.PI + (x > 0 ? 0.3 : -0.3), 'recite',
-      { robe: c, cap: 'kofia', capColor: 0xffffff, prop: 'slate', scale: 0.78, trim: 0x14805c },
-      ['Alif, Ba, Ta...', 'Walaah wey dry!', 'Bismillah...', 'Abeg, the verse don vanish!']));
+      { robe: c, cap: 'kofia', capColor: 0xffffff, prop: 'book', scale: 0.78, trim: 0x14805c },
+      ['Alif, Ba, Ta...', 'Subhanallah, let me revise this ayah!', 'Bismillah ir-Rahman ir-Rahim...', 'Today\'s Classroom topic is so clear!']));
 
   addNPC('hajia', 'Alhaja Sidikat', 'Saraa Mama', 6.2, 3.6, -0.6, 'wave',
     { robe: 0x7e57c2, trim: 0xffd978, cap: 'hijab', capColor: 0xe1bee7, female: true, skin: 0x5d3a1a },
@@ -766,6 +1176,62 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
     { robe: 0xf5f5dc, trim: 0x92400e, cap: 'fila', capColor: 0x7c2d12, beard: 0xdddddd, skin: 0x4a2c17 },
     ['Ayo is the game of wisdom. Sit and play!', 'Count your seeds well, my child.']);
 
+  // Classroom Hall Instructors & Students (inside the 3D Classroom Hall at x = 31, z = -12)
+  addNPC('ustadh_nahw', 'Ustadh Qasim', 'Nahw & Sarf Master', 25.2, -16.8, 0, 'alfa',
+    { robe: 0xffffff, trim: 0xd97706, cap: 'turban', capColor: 0xfef3c7, beard: 0x222222, prop: 'book', skin: 0x4a2c17 },
+    ['Al-Kalimah is divided into Ism, Fi\'l, and Harf!', 'Approach the Nahw board to begin today\'s grammar lesson!']);
+  addNPC('ustadh_fiqh', 'Mufti Zubair', 'Fiqh & Ibadah Teacher', 31.0, -16.8, 0, 'idle',
+    { robe: 0x065f46, trim: 0x10b981, cap: 'turban', capColor: 0xffffff, beard: 0x444444, prop: 'tesbih', skin: 0x5d3a1a },
+    ['Validity of Salah begins with pure Wudu.', 'Step up to the Fiqh board for today\'s ruling!']);
+  addNPC('ustadh_quran', 'Qari Ibrahim', 'Tajweed & Hifz Master', 36.8, -16.8, 0, 'recite',
+    { robe: 0x0c4a6e, trim: 0x38bdf8, cap: 'kofia', capColor: 0xffffff, beard: 0x111111, prop: 'book', skin: 0x3b2314 },
+    ['Observe the Ghunnah and Madd carefully!', 'Check the Qur\'an & Tajweed board for today\'s recitation lesson!']);
+
+  // Ruwaq Dormitory Roommates (inside the 3D Ruwaq Boarding House at x = 51, z = -12)
+  addNPC('dorm_mate1', 'Yusuf', 'Ruwaq Senior Prefect', 53.8, -14.8, -Math.PI / 2, 'recite',
+    { robe: 0xe0f2fe, trim: 0x0284c7, cap: 'kofia', capColor: 0xffffff, prop: 'book', scale: 0.9, skin: 0x5d3a1a },
+    ['Welcome to Ruwaq Dormitory!', 'Use your bed to rest, the desk to revise, or the Sajjadah to pray Tahajjud!', 'When you save enough Naira, check the Real Estate table to rent your own room!']);
+
+  // Real estate agent near the residential walkway
+  addNPC('estate_agent', 'Alhaji Mutiu', 'Caretaker & Landlord', 60.0, -4.5, 0, 'wave',
+    { robe: 0x1e293b, trim: 0xfbbf24, cap: 'fila', capColor: 0xfbbf24, beard: 0x555555, skin: 0x4a2c17 },
+    ['Looking for a self-con or personal duplex?', 'Inspect every house along this street — from Ruwaq to the Sheikh\'s Villa!', 'Buy a mattress, standing fan, or solar inverter and see it inside your room!']);
+
+  const syncUpgrades = (upgrades: string[]) => {
+    const owned = new Set(upgrades);
+    Object.entries(upgradeMap).forEach(([id, objs]) => {
+      const vis = owned.has(id);
+      objs.forEach((o) => {
+        o.visible = vis;
+      });
+    });
+    Object.entries(defaultUpgradeMap).forEach(([id, objs]) => {
+      const replaced = owned.has(id);
+      objs.forEach((o) => {
+        o.visible = !replaced;
+      });
+    });
+  };
+
+  const syncHouseAccess = (activeTier: string) => {
+    houseGates.forEach((gate) => {
+      const unlocked = gate.tierId === activeTier;
+      gate.doorGroup.visible = !unlocked;
+      if (unlocked) {
+        // Move collider far off-map so the doorway is completely open
+        gate.collider.minX = 9999;
+        gate.collider.maxX = 9999;
+        gate.collider.minZ = 9999;
+        gate.collider.maxZ = 9999;
+      } else {
+        gate.collider.minX = gate.savedBounds.minX;
+        gate.collider.maxX = gate.savedBounds.maxX;
+        gate.collider.minZ = gate.savedBounds.minZ;
+        gate.collider.maxZ = gate.savedBounds.maxZ;
+      }
+    });
+  };
+
   const dispose = () => {
     npcs.forEach((n) => n.char.dispose());
     matCache.forEach((m) => m.dispose());
@@ -781,9 +1247,9 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
         };
         if (Array.isArray(mt)) mt.forEach(disposeMat);
         else if (mt) disposeMat(mt);
-      }
+      };
     });
   };
 
-  return { colliders, vehicles, rideBus, lampMats, windowMats, headMats, npcs, dispose };
+  return { colliders, vehicles, rideBus, lampMats, windowMats, headMats, npcs, fanRotors, syncUpgrades, syncHouseAccess, dispose };
 }

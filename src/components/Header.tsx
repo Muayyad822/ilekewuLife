@@ -6,9 +6,9 @@ import { Volume2, VolumeX, RotateCcw, Sparkles } from 'lucide-react';
 
 const STAGE_LABELS: Record<string, { title: string; badgeColor: string; role: string }> = {
   omo_kewu: {
-    title: 'Omo Kewu (Slate Novice)',
+    title: "Omo Kewu (Ibtida'i Student)",
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-200',
-    role: 'Writing on Wooden Slate with Pot Ink',
+    role: "Studying Qa'idah & Juz 'Amma",
   },
   arowo_kewu: {
     title: 'Arowo-Kewu (Class Monitor)',

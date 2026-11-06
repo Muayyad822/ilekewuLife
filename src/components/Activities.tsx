@@ -1,14 +1,23 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore, LOC_META } from '@/store/gameStore';
 import { Loc } from '@/types/game';
 import { SHOP_ITEMS, BOOK_NAMES } from '@/data/shop';
 import {
-  Mcq, OrderItem, shuffle,
-  makeHurufQuestions, VERSES, WUDU_STEPS, FIQH_CASES,
-  makeNahwQuestions, makeTutorQuestions, makeHomeLessonQuestions,
-  ADHAN_LINES, KHUTBAH_PARTS, KHUTBAH_QUESTIONS,
+  Mcq,
+  OrderItem,
+  shuffle,
+  makeHurufQuestions,
+  VERSES,
+  WUDU_STEPS,
+  makeFiqhQuestions,
+  makeNahwQuestions,
+  makeTutorQuestions,
+  makeHomeLessonQuestions,
+  ADHAN_LINES,
+  KHUTBAH_PARTS,
+  makeKhutbahQuestions,
 } from '@/data/lessons';
 import { prayerFor } from '@/lib/time';
 import { sound } from '@/lib/audio';
@@ -19,7 +28,7 @@ import { CheckCircle2, XCircle, Lock, Bus, Sparkles, BookOpen, ShoppingBag, Volu
 // ============================================================================
 // Reusable MCQ Runner (Huruf, Nahw, Fiqh cases, Tutoring, Home Lesson, Khutbah)
 // ============================================================================
-const McqRunner: React.FC<{
+export const McqRunner: React.FC<{
   title: string;
   subtitle: string;
   questions: Mcq[];
@@ -29,40 +38,57 @@ const McqRunner: React.FC<{
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
   const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(timedSeconds ?? 0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(timedSeconds ?? null);
+
+  const scoreRef = useRef(0);
+  const onFinishRef = useRef(onFinish);
+  const finishedRef = useRef(false);
 
   useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
+
+  // Stable countdown timer that never resets on score change
+  useEffect(() => {
     if (!timedSeconds) return;
+    setTimeLeft(timedSeconds);
     const id = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(id);
-          onFinish(score, questions.length);
-          return 0;
-        }
-        return t - 1;
+      setTimeLeft((prev) => {
+        if (prev === null) return null;
+        return prev > 0 ? prev - 1 : 0;
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [timedSeconds, score, questions.length, onFinish]);
+  }, [timedSeconds]);
+
+  // Trigger finish cleanly when timer hits 0
+  useEffect(() => {
+    if (timedSeconds && timeLeft === 0 && !finishedRef.current) {
+      finishedRef.current = true;
+      onFinishRef.current(scoreRef.current, questions.length);
+    }
+  }, [timedSeconds, timeLeft, questions.length]);
 
   const q = questions[idx];
   if (!q) return null;
 
   const choose = (i: number) => {
-    if (picked !== null) return;
+    if (picked !== null || finishedRef.current) return;
     setPicked(i);
     if (i === q.answer) {
       sound.playTakbeer();
-      setScore((s) => s + 1);
+      scoreRef.current += 1;
+      setScore(scoreRef.current);
     } else {
       sound.playPasan();
     }
   };
 
   const next = () => {
+    if (finishedRef.current) return;
     if (idx + 1 >= questions.length) {
-      onFinish(score, questions.length);
+      finishedRef.current = true;
+      onFinishRef.current(scoreRef.current, questions.length);
     } else {
       setPicked(null);
       setIdx((i) => i + 1);
@@ -77,7 +103,7 @@ const McqRunner: React.FC<{
           <p className="text-xs text-stone-500">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-bold">
-          {timedSeconds ? (
+          {timedSeconds && timeLeft !== null ? (
             <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-mono">⏱ {timeLeft}s</span>
           ) : null}
           <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900">
@@ -87,13 +113,13 @@ const McqRunner: React.FC<{
       </div>
 
       <div className="bg-stone-100 rounded-2xl p-5 text-center space-y-2 border border-stone-200">
+        {q.sub && <div className="text-[11px] font-bold text-sky-700 uppercase tracking-wider">{q.sub}</div>}
         {q.promptAr && (
-          <div dir="rtl" className="text-4xl sm:text-5xl font-serif font-black text-stone-900 py-2">
+          <div dir="rtl" className="text-3xl sm:text-4xl font-serif font-black text-stone-900 py-2">
             {q.promptAr}
           </div>
         )}
-        {q.prompt && <div className="text-base font-bold text-stone-800">{q.prompt}</div>}
-        {q.sub && <div className="text-xs font-semibold text-sky-700 uppercase tracking-wider">{q.sub}</div>}
+        {q.prompt && <div className="text-sm sm:text-base font-bold text-stone-800 leading-snug">{q.prompt}</div>}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -111,7 +137,7 @@ const McqRunner: React.FC<{
               key={i}
               onClick={() => choose(i)}
               dir={q.optionsAr ? 'rtl' : undefined}
-              className={`p-3.5 rounded-xl border-2 font-bold transition cursor-pointer flex items-center justify-between gap-2 ${
+              className={`p-3.5 rounded-xl border-2 font-bold transition cursor-pointer flex items-center justify-between gap-2 text-left ${
                 q.optionsAr ? 'text-2xl font-serif' : 'text-sm'
               } ${cls}`}
             >
@@ -130,7 +156,7 @@ const McqRunner: React.FC<{
             onClick={next}
             className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer shrink-0"
           >
-            {idx + 1 >= questions.length ? 'Finish & Claim Reward' : 'Next →'}
+            {idx + 1 >= questions.length ? 'Finish & Claim Reward' : 'Next Question →'}
           </button>
         </div>
       )}
@@ -179,7 +205,6 @@ const SequenceRunner: React.FC<{
         </span>
       </div>
 
-      {/* Completed steps */}
       {step > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-1">
           <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Completed in order</div>
@@ -226,7 +251,8 @@ const SequenceRunner: React.FC<{
 // Hifz Verse Word Scrambler
 // ============================================================================
 const HifzBuilder: React.FC<{ onDone: () => void }> = ({ onDone }) => {
-  const { owned, reward } = useGameStore();
+  const owned = useGameStore((s) => s.owned);
+  const reward = useGameStore((s) => s.reward);
   const available = useMemo(
     () => VERSES.filter((v) => !v.needs || owned.includes(v.needs)),
     [owned],
@@ -272,7 +298,6 @@ const HifzBuilder: React.FC<{ onDone: () => void }> = ({ onDone }) => {
         )}
       </div>
 
-      {/* Assembled ayah box */}
       <div
         dir="rtl"
         className="min-h-[84px] rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 flex flex-wrap items-center justify-center gap-2 text-2xl sm:text-3xl font-serif font-bold text-stone-900"
@@ -294,7 +319,6 @@ const HifzBuilder: React.FC<{ onDone: () => void }> = ({ onDone }) => {
         </div>
       )}
 
-      {/* Word bank */}
       <div dir="rtl" className="flex flex-wrap items-center justify-center gap-2.5 py-2">
         {scrambled.map((item) => {
           const used = picked.includes(item.i);
@@ -350,13 +374,17 @@ const HifzBuilder: React.FC<{ onDone: () => void }> = ({ onDone }) => {
 // ============================================================================
 // Mallam Idris's Bookshop & Outfit Customizer
 // ============================================================================
-const ShopView: React.FC = () => {
-  const { player, owned, outfit, buyOrEquip } = useGameStore();
+const ShopView: React.FC<{ robesOnly?: boolean }> = ({ robesOnly = false }) => {
+  const player = useGameStore((s) => s.player);
+  const owned = useGameStore((s) => s.owned);
+  const outfit = useGameStore((s) => s.outfit);
+  const buyOrEquip = useGameStore((s) => s.buyOrEquip);
   const [msg, setMsg] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'book' | 'robe' | 'cap' | 'prop'>('all');
 
+  const activeFilter = robesOnly ? 'robe' : filter;
   const items = SHOP_ITEMS.filter(
-    (it) => (filter === 'all' || it.kind === filter) && (!it.gender || it.gender === player.gender),
+    (it) => (activeFilter === 'all' || it.kind === activeFilter) && (!it.gender || it.gender === player.gender),
   );
 
   const isEquipped = (id: string) => {
@@ -368,38 +396,36 @@ const ShopView: React.FC = () => {
   return (
     <div className="p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-3">
-        <div>
-          <h3 className="font-extrabold text-base text-stone-900 flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-amber-600" /> Mallam Idris — Books, Attar & Modrasah Wear
-          </h3>
-          <p className="text-xs text-stone-500">
-            Buy classical books to unlock higher subjects, or equip robes & caps visible on your 3D character!
-          </p>
-        </div>
+        <h3 className="font-extrabold text-base text-stone-900 flex items-center gap-2">
+          <ShoppingBag className="w-5 h-5 text-amber-600" />
+          {robesOnly ? 'Robes & Jalabiyas' : 'Mallam Idris — Store'}
+        </h3>
         <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 font-mono text-xs font-extrabold">
-          Wallet: ₦{player.stats.naira.toLocaleString()}
+          ₦{player.stats.naira.toLocaleString()}
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        {([
-          ['all', 'All Items'],
-          ['book', '📚 Books'],
-          ['robe', '👘 Robes'],
-          ['cap', '🧢 Caps & Hijabs'],
-          ['prop', '📿 Hand Props'],
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setFilter(id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer shrink-0 ${
-              filter === id ? 'bg-sky-600 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {!robesOnly && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {([
+            ['all', 'All Items'],
+            ['book', '📚 Books'],
+            ['robe', '👘 Robes'],
+            ['cap', '🧢 Caps & Hijabs'],
+            ['prop', '📖 Hand Props'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setFilter(id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer shrink-0 ${
+                filter === id ? 'bg-sky-600 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {msg && (
         <div className="text-xs font-bold bg-amber-50 border border-amber-300 text-amber-950 px-3.5 py-2.5 rounded-xl">
@@ -456,7 +482,12 @@ const ShopView: React.FC = () => {
 // Danfo Bus Stop Route Picker
 // ============================================================================
 const BusView: React.FC = () => {
-  const { location, player, owned, startRide, nextDay, setActiveTab } = useGameStore();
+  const location = useGameStore((s) => s.location);
+  const player = useGameStore((s) => s.player);
+  const owned = useGameStore((s) => s.owned);
+  const startRide = useGameStore((s) => s.startRide);
+  const getBusFare = useGameStore((s) => s.getBusFare);
+  const setActiveTab = useGameStore((s) => s.setActiveTab);
   const [err, setErr] = useState<string | null>(null);
 
   const routes: { to: Loc; title: string; subtitle: string; badge: string; locked?: string }[] = [
@@ -464,19 +495,19 @@ const BusView: React.FC = () => {
       to: 'school',
       title: LOC_META.school.name,
       subtitle: 'Return to the Madrasah compound, classes, well and street stalls.',
-      badge: `Fare ₦${LOC_META.school.fare}`,
+      badge: `Fare ₦${getBusFare('school')}`,
     },
     {
       to: 'east',
       title: LOC_META.east.name,
-      subtitle: 'Ride east to teach private Arabic & Fiqh home lessons for ₦3,500!',
-      badge: `Fare ₦${LOC_META.east.fare} · Earn ₦3,500`,
+      subtitle: 'Ride east to teach private Arabic & Fiqh home lessons for up to ₦3,500!',
+      badge: `Fare ₦${getBusFare('east')} · Earn ₦3,500`,
     },
     {
       to: 'west',
       title: LOC_META.west.name,
-      subtitle: 'Ride west to deliver the Friday Khutbah & lead congregation for ₦6,000!',
-      badge: `Fare ₦${LOC_META.west.fare} · Earn ₦6,000`,
+      subtitle: 'Ride west to deliver the Friday Khutbah & lead congregation for up to ₦6,000!',
+      badge: `Fare ₦${getBusFare('west')} · Earn ₦6,000`,
       locked: owned.includes('riyad') ? undefined : `Requires ${BOOK_NAMES.riyad}`,
     },
   ];
@@ -543,15 +574,14 @@ const BusView: React.FC = () => {
       </div>
 
       <div className="pt-2 border-t border-stone-200 flex items-center justify-between">
-        <span className="text-xs text-stone-500">Done for today? Head home and rest for tomorrow&apos;s chronicle.</span>
+        <span className="text-xs text-stone-500">Done for today? Head to your Home quarters to rest.</span>
         <button
           onClick={() => {
-            nextDay();
-            setActiveTab('life');
+            setActiveTab('home');
           }}
           className="text-xs font-bold px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white cursor-pointer"
         >
-          Rest & Advance Day
+          Go to Home Quarters
         </button>
       </div>
     </div>
@@ -562,11 +592,13 @@ const BusView: React.FC = () => {
 // Master Activity Modal Switcher
 // ============================================================================
 export const ActivityModal: React.FC = () => {
-  const {
-    activity, setActivity, owned, reward, washWalaahSuccess, slateTraced,
-    hour, triggerRally,
-  } = useGameStore();
-  // Sub-phase is keyed to the activity it belongs to, so it resets automatically when the activity changes
+  const activity = useGameStore((s) => s.activity);
+  const setActivity = useGameStore((s) => s.setActivity);
+  const owned = useGameStore((s) => s.owned);
+  const reward = useGameStore((s) => s.reward);
+  const performSunnahWudu = useGameStore((s) => s.performSunnahWudu);
+  const triggerRally = useGameStore((s) => s.triggerRally);
+
   const [phaseState, setPhaseState] = useState<{ forActivity: typeof activity; phase: 'seq' | 'mcq' }>({
     forActivity: null,
     phase: 'seq',
@@ -574,10 +606,21 @@ export const ActivityModal: React.FC = () => {
   const subPhase = phaseState.forActivity === activity ? phaseState.phase : 'seq';
   const setSubPhase = (phase: 'seq' | 'mcq') => setPhaseState({ forActivity: activity, phase });
 
+  // Lock generated question banks per activity session so background clock updates never reset questions mid-quiz!
+  const sessionQuestions = useMemo<Mcq[]>(() => {
+    if (activity === 'huruf') return makeHurufQuestions(8);
+    if (activity === 'tutor') return makeTutorQuestions(5);
+    if (activity === 'wudu' && subPhase === 'mcq') return makeFiqhQuestions(4);
+    if (activity === 'nahw') return makeNahwQuestions(5);
+    if (activity === 'homelesson') return makeHomeLessonQuestions(5);
+    if (activity === 'khutbah' && subPhase === 'mcq') return makeKhutbahQuestions(3);
+    return [];
+  }, [activity, subPhase]);
+
   if (!activity) return null;
 
   const close = () => setActivity(null);
-  const prayer = prayerFor(hour);
+  const prayer = prayerFor(useGameStore.getState().hour);
 
   let title = 'Madrasah Activity';
   let body: React.ReactNode = null;
@@ -616,11 +659,11 @@ export const ActivityModal: React.FC = () => {
       </div>
     );
   } else if (activity === 'ibtida') {
-    title = "Ibtida'i Class Shed — Huruf & Junior Tutoring";
+    title = "Ibtida'i Class Shed — Huruf & Junior Notebook Check";
     body = (
       <div className="p-5 space-y-3">
         <p className="text-xs text-stone-600">
-          Practice your Arabic vowel marks or grade junior Omo Kewu slates to earn pocket money:
+          Practice your Arabic vowel marks or check junior Omo Kewu notebooks &amp; recitation (Tas-heeh) to earn pocket money:
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
@@ -636,33 +679,31 @@ export const ActivityModal: React.FC = () => {
             onClick={() => setActivity('tutor')}
             className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/60 hover:bg-emerald-100/70 text-left cursor-pointer"
           >
-            <div className="font-extrabold text-sm text-stone-900">📿 Grade Junior Slates (Hustle)</div>
+            <div className="font-extrabold text-sm text-stone-900">📓 Check Junior Notebooks (Hustle)</div>
             <p className="text-xs text-stone-600 mt-1">
-              Spot spelling mistakes on junior Walaah boards to earn up to ₦1,000!
+              Correct spelling &amp; Tajweed mistakes for junior students to earn up to ₦1,250!
             </p>
           </button>
         </div>
       </div>
     );
   } else if (activity === 'well') {
-    title = 'Ablution Well & Taps — Taharah & Slate Washing';
+    title = 'Ablution Well & Taps — Taharah & Fiqh of Wudu';
     body = (
       <div className="p-5 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             onClick={() => {
-              washWalaahSuccess();
+              performSunnahWudu();
               close();
             }}
             className="p-4 rounded-2xl border-2 border-sky-500 bg-sky-50/60 hover:bg-sky-100/70 text-left cursor-pointer"
           >
             <div className="font-extrabold text-sm text-stone-900">
-              💧 Wash Walaah Slate {slateTraced ? '(Inked Bonus Ready!)' : ''}
+              💧 Perform Fresh Sunnah Wudu
             </div>
             <p className="text-xs text-stone-600 mt-1">
-              {slateTraced
-                ? 'Your slate has fresh Tadaa calligraphy! Wash it now for +8 Ilm & ₦150!'
-                : 'Rinse your wooden board with cool well water (+5 Ilm).'}
+              Refresh with cool well water and renew your state of purity (+12 Energy, +5 Taqwa, +3 Barakah).
             </p>
           </button>
           <button
@@ -671,7 +712,7 @@ export const ActivityModal: React.FC = () => {
           >
             <div className="font-extrabold text-sm text-stone-900">📙 Fiqh of Wudu &amp; Salah (Al-Akhdari)</div>
             <p className="text-xs text-stone-600 mt-1">
-              Order the steps of Wudu {owned.includes('akhdari') ? '& solve Sujood Sahw cases' : ''} (+Ilm &amp; +Taqwa).
+              Order the steps of Wudu {owned.includes('akhdari') ? '& solve Maliki Sujood Sahw cases' : ''} (+Ilm &amp; +Taqwa).
             </p>
           </button>
         </div>
@@ -684,31 +725,33 @@ export const ActivityModal: React.FC = () => {
     title = "Qa'idah Baghdadiyyah — 45s Huruf Drill";
     body = (
       <McqRunner
+        key="huruf-mcq"
         title="Huruf & Harakat Speed Drill"
         subtitle="Match each Arabic letter and vowel mark before the timer runs out!"
-        questions={makeHurufQuestions(8)}
+        questions={sessionQuestions}
         timedSeconds={45}
         onFinish={(c, tot) => {
           reward(
-            { ilm: c * 2, pasanResistance: c, naira: c * 50 },
-            `Scored ${c}/${tot} in the Qa'idah Huruf speed drill (+${c * 2} Ilm, +₦${c * 50}).`,
+            { ilm: c * 2, pasanResistance: c, naira: c * 60 },
+            `Scored ${c}/${tot} in the Qa'idah Huruf speed drill (+${c * 2} Ilm, +₦${c * 60}).`,
           );
           close();
         }}
       />
     );
   } else if (activity === 'tutor') {
-    title = 'Arowo-Kewu Hustle — Grade Junior Slates';
+    title = 'Arowo-Kewu Hustle — Check Junior Notebooks (Tas-heeh)';
     body = (
       <McqRunner
-        title="Check Junior Omo Kewu Slates"
-        subtitle="Pick the slate with the right Arabic spelling to earn your monitor stipend!"
-        questions={makeTutorQuestions()}
+        key="tutor-mcq"
+        title="Check Junior Omo Kewu Notebooks & Recitation"
+        subtitle="Guide the younger students on accurate Arabic spelling and Tajweed to earn your monitor stipend!"
+        questions={sessionQuestions}
         onFinish={(c, tot) => {
-          const pay = c * 200;
+          const pay = c * 250;
           reward(
-            { naira: pay, ilm: c, barakah: 2 },
-            `Graded ${c}/${tot} junior slates accurately and earned ₦${pay.toLocaleString()}!`,
+            { naira: pay, ilm: c * 2, barakah: 3 },
+            `Checked ${c}/${tot} junior notebooks accurately and earned ₦${pay.toLocaleString()} monitor stipend!`,
           );
           close();
         }}
@@ -733,13 +776,14 @@ export const ActivityModal: React.FC = () => {
         />
       ) : (
         <McqRunner
-          title="Matn Al-Akhdari — Sujood Sahw Cases"
+          key="wudu-mcq"
+          title="Matn Al-Akhdari — Sujood Sahw & Taharah Cases"
           subtitle="Apply Maliki fiqh rulings to real prayer scenarios."
-          questions={FIQH_CASES}
+          questions={sessionQuestions}
           onFinish={(c, tot) => {
             reward(
-              { ilm: 5 + c * 2, taqwa: 6 },
-              `Completed Wudu & Al-Akhdari Fiqh cases (${c}/${tot}) (+${5 + c * 2} Ilm, +6 Taqwa).`,
+              { ilm: 5 + c * 2, taqwa: 6, naira: c * 150 },
+              `Completed Wudu & Al-Akhdari Fiqh cases (${c}/${tot}) (+${5 + c * 2} Ilm, +6 Taqwa, +₦${c * 150}).`,
             );
             close();
           }}
@@ -763,9 +807,10 @@ export const ActivityModal: React.FC = () => {
       </div>
     ) : (
       <McqRunner
-        title="Al-Ajurrumiyyah — Fa'il & Maf'ul Parsing"
-        subtitle="Identify the doer (Fa'il) and receiver (Maf'ul bihi) in each Arabic sentence."
-        questions={makeNahwQuestions(5)}
+        key="nahw-mcq"
+        title="Al-Ajurrumiyyah — Arabic Grammar & I'rab"
+        subtitle="Parse the grammatical roles in each classical Arabic sentence."
+        questions={sessionQuestions}
         onFinish={(c, tot) => {
           reward(
             { ilm: c * 3, barakah: c * 2, naira: c * 250 },
@@ -796,9 +841,10 @@ export const ActivityModal: React.FC = () => {
     title = 'Isolo Estate — Private Home Lesson Hustle';
     body = (
       <McqRunner
+        key="homelesson-mcq"
         title="Home Lesson Tutoring (Isolo Estate)"
-        subtitle="Teach Alhaji's children Arabic grammar & Fiqh to earn your ₦3,500 home-lesson fee!"
-        questions={makeHomeLessonQuestions()}
+        subtitle="Teach Alhaji Musa's children Duas, Salah, Arabic & Tajweed to earn your tutoring fee!"
+        questions={sessionQuestions}
         onFinish={(c, tot) => {
           const pay = 1500 + c * 400;
           reward(
@@ -821,9 +867,10 @@ export const ActivityModal: React.FC = () => {
         />
       ) : (
         <McqRunner
+          key="khutbah-mcq"
           title="Part 2: Counsel the Congregation"
           subtitle="Guide the community with wisdom and mercy."
-          questions={KHUTBAH_QUESTIONS}
+          questions={sessionQuestions}
           onFinish={(c, tot) => {
             const pay = 3000 + c * 1000;
             reward(
@@ -834,8 +881,11 @@ export const ActivityModal: React.FC = () => {
           }}
         />
       );
+  } else if (activity === 'wardrobe') {
+    title = 'My Wardrobe';
+    body = <ShopView robesOnly />;
   } else if (activity === 'shop') {
-    title = "Mallam Idris's Bookshop & Wardrobe";
+    title = "Mallam Idris's Store";
     body = <ShopView />;
   } else if (activity === 'bus') {
     title = 'Danfo Bus Stop — Lagos Transit';
@@ -890,4 +940,3 @@ export const ActivityModal: React.FC = () => {
     </div>
   );
 };
-

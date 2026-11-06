@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: checks if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: checks if the caller is the owner of this document
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // 1. Private User Game State (Save slots, wallet, stats, inventory)
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // 2. Real-time Presence & Madrasah Leaderboard
+    // Any signed-in student can see who is online and view scholar ranks,
+    // but users can only write and broadcast their own presence heartbeat.
+    match /presence/{uid} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(uid);
+    }
+
+    // 3. Peer-to-Peer Academic Challenges (Hifz & Nahw Duels)
+    match /challenges/{challengeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.fromUid == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && resource.data.fromUid == request.auth.uid;
+    }
+
+    // 4. Minbar Community Feed (Announcements, reflections & khutbah highlights)
+    match /minbar_posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
+      // Allow authenticated students to like or interact with posts
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && resource.data.authorUid == request.auth.uid;
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

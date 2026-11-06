@@ -1,16 +1,48 @@
 import { create } from 'zustand';
 import {
-  PlayerProfile, PlayerStats, LifeStage, GameEvent, EventChoice, MinbarPost,
-  Loc, ActivityId, Outfit, RideInfo, ErrandState,
+  PlayerProfile,
+  PlayerStats,
+  LifeStage,
+  GameEvent,
+  EventChoice,
+  MinbarPost,
+  Loc,
+  ActivityId,
+  Outfit,
+  RideInfo,
+  ErrandState,
+  PlayerHousing,
+  PlayerEducation,
+  HousingTierId,
+  SubjectId,
+  OnlinePeer,
+  GameChallenge,
 } from '@/types/game';
 import { GAME_EVENTS } from '@/data/events';
-import { SHOP_ITEMS, DEFAULT_OWNED, DEFAULT_OUTFIT } from '@/data/shop';
+import {
+  SHOP_ITEMS,
+  DEFAULT_OWNED,
+  DEFAULT_OUTFIT,
+  HOUSING_TIERS,
+  LIFESTYLE_ASSETS,
+} from '@/data/shop';
+import { getTodayDateKey } from '@/data/curriculum';
 import { sound } from '@/lib/audio';
 import {
-  WeatherInfo, DEFAULT_WEATHER, SolatTimings, DEFAULT_LAGOS_TIMINGS,
+  WeatherInfo,
+  DEFAULT_WEATHER,
+  SolatTimings,
+  DEFAULT_LAGOS_TIMINGS,
 } from '@/lib/time';
+import {
+  saveCloudState,
+  CloudSavePayload,
+  publishMinbarPostToCloud,
+  sendGameChallengeToCloud,
+  updatePresenceStatus,
+} from '@/lib/firebase';
 
-export type TabId = 'compound' | 'life' | 'walaah' | 'quiz' | 'minbar' | 'rankings';
+export type TabId = 'compound' | 'classroom' | 'home' | 'profile' | 'minbar';
 
 export const LOC_META: Record<Loc, { name: string; fare: number }> = {
   school: { name: 'MAHD IQRA, Ejigbo', fare: 200 },
@@ -25,12 +57,20 @@ const stageFor = (age: number, ilm: number): LifeStage => {
   return 'omo_kewu';
 };
 
+export interface AuthUserSummary {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+}
+
 interface GameState {
   player: PlayerProfile;
+  housing: PlayerHousing;
+  education: PlayerEducation;
   currentEvent: GameEvent | null;
   minbarPosts: MinbarPost[];
   isMuted: boolean;
-  /** 'compound' = no panel open, the 3D world is fully visible */
+  /** 'compound' = School 3D world is visible */
   activeTab: TabId;
   /** Real-world hour of day (0-24) */
   hour: number;
@@ -38,6 +78,14 @@ interface GameState {
   weather: WeatherInfo;
   /** Daily Lagos Solat timings */
   solatTimings: SolatTimings;
+
+  // Firebase & Multiplayer state
+  authUser: AuthUserSummary | null;
+  cloudSynced: boolean;
+  lastSyncedAt: number | null;
+  onlinePeers: OnlinePeer[];
+  challenges: GameChallenge[];
+  greetedPeerIds: string[];
 
   // Interactive systems
   owned: string[];
@@ -47,34 +95,66 @@ interface GameState {
   location: Loc;
   ride: RideInfo | null;
   errand: ErrandState | null;
-  slateTraced: boolean;
   lastAdhanPrayer: string;
   rally: number;
+  roomOverlay: 'none' | 'home_dashboard' | 'classroom_lesson';
+  activeClassroomSubject: SubjectId;
 
   // Actions
   chooseOption: (choice: EventChoice) => void;
   nextDay: () => void;
+  restAtHome: () => { ok: boolean; msg: string };
+  prayInRoom: () => string;
+  studyAtDesk: () => string;
+  setRoomOverlay: (overlay: 'none' | 'home_dashboard' | 'classroom_lesson') => void;
+  openClassroomSubject: (subject: SubjectId) => void;
   toggleMute: () => void;
   setActiveTab: (tab: TabId) => void;
   setHour: (hour: number) => void;
   setWeather: (weather: WeatherInfo) => void;
   setSolatTimings: (timings: SolatTimings) => void;
   setActivity: (activity: ActivityId | null) => void;
-  /** Pay naira (if affordable) and apply stat changes. Returns false if too poor. */
   spend: (cost: number, changes: Partial<PlayerStats>, log: string) => boolean;
   reward: (changes: Partial<PlayerStats>, log: string, hifzGain?: number) => void;
   buyOrEquip: (itemId: string) => { ok: boolean; msg: string };
+  rentOrBuyHousing: (tierId: HousingTierId, mode: 'rent' | 'buy') => { ok: boolean; msg: string };
+  payRent: () => { ok: boolean; msg: string };
+  buyLifestyleAsset: (assetId: string) => { ok: boolean; msg: string };
+  completeDailyClassroomLesson: (
+    subject: SubjectId,
+    topicTitle: string,
+    correct: number,
+    total: number,
+  ) => { stipend: number; ilmGain: number; alreadyDoneToday: boolean };
+  updateProfileInfo: (updates: {
+    name?: string;
+    gender?: 'male' | 'female';
+    madrasahName?: string;
+    avatarUrl?: string;
+  }) => void;
+  setAuthUser: (user: AuthUserSummary | null) => void;
+  setOnlinePeers: (peers: OnlinePeer[]) => void;
+  setChallenges: (challenges: GameChallenge[]) => void;
+  setMinbarPosts: (posts: MinbarPost[]) => void;
+  hydrateFromCloud: (payload: CloudSavePayload) => void;
+  syncToCloud: () => Promise<boolean>;
+  sendSalaamToPeer: (peer: OnlinePeer) => { ok: boolean; msg: string };
+  organizeGameWithPeer: (
+    peer: OnlinePeer,
+    gameType: GameChallenge['gameType'],
+    wager: number,
+  ) => { ok: boolean; msg: string };
   startRide: (to: Loc) => { ok: boolean; msg: string };
   updateRide: (progress: number) => void;
   finishRide: () => void;
   startErrand: () => string;
   pickUpErrand: () => string;
   completeErrand: () => string;
-  markSlateTraced: () => void;
+  performSunnahWudu: () => void;
   triggerRally: (prayerName: string) => void;
-  washWalaahSuccess: () => void;
   quizAnswerSuccess: (points: number) => void;
   addMinbarPost: (text: string, authorName?: string) => void;
+  getBusFare: (to: Loc) => number;
   resetGame: () => void;
 }
 
@@ -83,35 +163,56 @@ const INITIAL_STATS: PlayerStats = {
   taqwa: 40,
   energy: 85,
   pasanResistance: 20,
-  naira: 1200,
-  barakah: 10,
+  naira: 2000, // Recommended ₦2,000 starter pocket money in Ruwaq
+  barakah: 12,
+};
+
+const INITIAL_HOUSING: PlayerHousing = {
+  tier: 'ruwaq',
+  ownership: 'boarding',
+  rentDueInDays: 0,
+  upgrades: [],
+};
+
+const INITIAL_EDUCATION: PlayerEducation = {
+  completedDailyKeys: [],
+  lastStudyDate: '',
+  totalLessonsCompleted: 0,
+  subjectMastery: {
+    nahw: 15,
+    fiqh: 20,
+    tajweed: 25,
+    hadith: 15,
+    seerah: 15,
+    adab: 30,
+  },
 };
 
 const INITIAL_PLAYER: PlayerProfile = {
-  id: 'guest_player_' + Math.random().toString(36).substring(7),
+  id: 'scholar_' + Math.random().toString(36).substring(2, 9),
   name: 'Ahmad Al-Mukhtar',
   gender: 'male',
   stage: 'omo_kewu',
-  age: 8,
+  age: 9,
   yearInMadrasah: 1,
   stats: INITIAL_STATS,
   hifzJuz: 1,
   inventory: [
     {
-      id: 'walaah_board',
-      name: 'Polished Wooden Slate (Walaah)',
-      category: 'tool',
-      icon: '🪵',
-      description: 'Your trusted wooden board for Quranic calligraphy.',
-      effectDescription: '+10% Ilm retention',
+      id: 'qaidah_book',
+      name: "Qa'idah Baghdadiyyah",
+      category: 'book',
+      icon: '📘',
+      description: 'Foundational Arabic alphabet and vowel manual.',
+      effectDescription: 'Unlocks Huruf & Tajweed drills',
     },
     {
-      id: 'tadaa_ink',
-      name: 'Traditional Soot Ink (Tadaa)',
+      id: 'daftar_notebook',
+      name: 'Arabic Exercise Notebook & Pen',
       category: 'tool',
-      icon: '🖋️',
-      description: 'Homemade rich black ink made from pot bottom soot.',
-      effectDescription: 'Essential for writing verses',
+      icon: '📓',
+      description: 'Ruled exercise book for copying daily classroom lessons and grammar notes.',
+      effectDescription: '+10% Classroom Ilm retention',
     },
     {
       id: 'white_kofia',
@@ -123,7 +224,7 @@ const INITIAL_PLAYER: PlayerProfile = {
     },
   ],
   logHistory: [
-    'Enrolled at MAHD IQRA, Ejigbo in Lagos. Given your first wooden Walaah board!',
+    'Arrived at Ruwaq Boarding House in MAHD IQRA, Ejigbo with ₦2,000 pocket money and your Qa’idah!',
   ],
   streakDays: 1,
   madrasahName: 'MAHD IQRA, Ejigbo, Lagos',
@@ -134,7 +235,7 @@ const INITIAL_MINBAR_POSTS: MinbarPost[] = [
     id: '1',
     authorName: 'Ustadh Luqman',
     authorStage: 'sheikh_agba',
-    text: 'May Allah bless every parent who wakes up early to prepare their children for Saturday and Sunday Ile-Kewu. Your reward is with Allah! 🤲',
+    text: 'Welcome to the Daily Classroom! Every student in Ruwaq should complete today’s Topic of the Day before Asr prayer. May Allah grant you beneficial Ilm! 🤲',
     likes: 124,
     takbeers: 340,
     timestamp: Date.now() - 3600000 * 2,
@@ -143,19 +244,70 @@ const INITIAL_MINBAR_POSTS: MinbarPost[] = [
     id: '2',
     authorName: 'Brother Faruq (Agege)',
     authorStage: 'markaziy',
-    text: 'Who remembers when Alfa shouted "Ta la\'a! Read it out loud!" and the whole courtyard shook? 😭 Never sleep in Asr class!',
+    text: 'Alhamdulillah! Just saved enough from Isolo Home Lessons to move from the Ruwaq into my own off-campus room in Ejigbo! 🚪🔑',
     likes: 88,
-    takbeers: 45,
+    takbeers: 145,
     timestamp: Date.now() - 3600000 * 5,
   },
   {
     id: '3',
     authorName: 'Sister Maryam (Ikorodu)',
     authorStage: 'arowo_kewu',
-    text: 'Alhamdulillah! Just completed Juz \'Amma today. Waiting for my small Walimah celebration this weekend 🧕🎉',
+    text: 'Just scored 3/3 on today’s Tajweed classroom test and kept my 7-day learning streak alive! Who wants a friendly Musabaqah duel? 🧕🏆',
     likes: 210,
     takbeers: 512,
     timestamp: Date.now() - 3600000 * 12,
+  },
+];
+
+export const CAMPUS_ONLINE_SCHOLARS: OnlinePeer[] = [
+  {
+    uid: 'campus_bilal',
+    name: 'Bilal Al-Ilori',
+    stage: 'arowo_kewu',
+    madrasahName: 'Darul Uloom, Ilorin',
+    ilm: 54,
+    hifzJuz: 8,
+    housingTier: 'shared_room',
+    currentTab: 'classroom',
+    lastSeen: Date.now() - 35000,
+    isLive: true,
+  },
+  {
+    uid: 'campus_zainab',
+    name: 'Zainab Bint Yusuf',
+    stage: 'markaziy',
+    madrasahName: 'Markaz Ta’leem, Agege',
+    ilm: 76,
+    hifzJuz: 19,
+    housingTier: 'mini_flat',
+    currentTab: 'classroom',
+    lastSeen: Date.now() - 18000,
+    isLive: true,
+  },
+  {
+    uid: 'campus_moruf',
+    name: 'Moruf Olanrewaju',
+    stage: 'omo_kewu',
+    madrasahName: 'MAHD IQRA, Ejigbo',
+    ilm: 28,
+    hifzJuz: 3,
+    housingTier: 'ruwaq',
+    currentTab: 'compound',
+    lastSeen: Date.now() - 50000,
+    isLive: true,
+  },
+  {
+    uid: 'campus_qasim',
+    name: 'Sheikh Qasim Ibadan',
+    stage: 'sheikh_agba',
+    madrasahName: 'Adabiyyah College, Ibadan',
+    ilm: 92,
+    hifzJuz: 30,
+    housingTier: 'personal_villa',
+    currentTab: 'minbar',
+    lastSeen: Date.now() - 90000,
+    isLive: true,
   },
 ];
 
@@ -163,13 +315,22 @@ const clamp = (v: number) => Math.min(100, Math.max(0, v));
 
 export const useGameStore = create<GameState>((set, get) => ({
   player: INITIAL_PLAYER,
-  currentEvent: GAME_EVENTS[0],
+  housing: INITIAL_HOUSING,
+  education: INITIAL_EDUCATION,
+  currentEvent: null,
   minbarPosts: INITIAL_MINBAR_POSTS,
   isMuted: false,
   activeTab: 'compound',
   hour: 7,
   weather: DEFAULT_WEATHER,
   solatTimings: DEFAULT_LAGOS_TIMINGS,
+
+  authUser: null,
+  cloudSynced: false,
+  lastSyncedAt: null,
+  onlinePeers: CAMPUS_ONLINE_SCHOLARS,
+  challenges: [],
+  greetedPeerIds: [],
 
   owned: [...DEFAULT_OWNED],
   outfit: { ...DEFAULT_OUTFIT },
@@ -178,14 +339,110 @@ export const useGameStore = create<GameState>((set, get) => ({
   location: 'school',
   ride: null,
   errand: null,
-  slateTraced: false,
   lastAdhanPrayer: '',
   rally: 0,
+  roomOverlay: 'none',
+  activeClassroomSubject: 'nahw',
 
   setHour: (hour) => set({ hour }),
   setWeather: (weather) => set({ weather }),
   setSolatTimings: (solatTimings) => set({ solatTimings }),
-  setActivity: (activity) => set({ activity, activeTab: 'compound' }),
+  setActivity: (activity) => set({ activity, roomOverlay: 'none' }),
+  setRoomOverlay: (roomOverlay) => set({ roomOverlay }),
+  openClassroomSubject: (subject) => set({ activeClassroomSubject: subject, roomOverlay: 'classroom_lesson' }),
+
+  setActiveTab: (tab) => {
+    set({ activeTab: tab, activity: null, roomOverlay: 'none' });
+    const { authUser, player, housing, outfit } = get();
+    if (authUser) {
+      updatePresenceStatus({
+        uid: authUser.uid,
+        name: player.name,
+        stage: player.stage,
+        madrasahName: player.madrasahName,
+        ilm: player.stats.ilm,
+        hifzJuz: player.hifzJuz,
+        housingTier: housing.tier,
+        currentTab: tab,
+        lastSeen: Date.now(),
+        outfit,
+        isLive: true,
+      });
+    }
+  },
+
+  setAuthUser: (authUser) => set({ authUser }),
+
+  setOnlinePeers: (cloudPeers) => {
+    const { authUser } = get();
+    const filteredCloud = cloudPeers.filter((p) => p.uid !== authUser?.uid);
+    const mergedMap = new Map<string, OnlinePeer>();
+    filteredCloud.forEach((p) => mergedMap.set(p.uid, p));
+    CAMPUS_ONLINE_SCHOLARS.forEach((p) => {
+      if (!mergedMap.has(p.uid)) mergedMap.set(p.uid, p);
+    });
+    set({ onlinePeers: Array.from(mergedMap.values()) });
+  },
+
+  setChallenges: (challenges) => set({ challenges }),
+  setMinbarPosts: (posts) => {
+    if (posts.length > 0) set({ minbarPosts: posts });
+  },
+
+  hydrateFromCloud: (payload) => {
+    set({
+      player: payload.player ?? get().player,
+      housing: payload.housing ?? get().housing,
+      education: payload.education ?? get().education,
+      owned: payload.owned ?? get().owned,
+      outfit: payload.outfit ?? get().outfit,
+      outfitRevision: get().outfitRevision + 1,
+      cloudSynced: true,
+      lastSyncedAt: payload.updatedAt ?? Date.now(),
+    });
+  },
+
+  syncToCloud: async () => {
+    const { authUser, player, housing, education, owned, outfit } = get();
+    if (!authUser) return false;
+    const ok = await saveCloudState(authUser.uid, {
+      player,
+      housing,
+      education,
+      owned,
+      outfit,
+      updatedAt: Date.now(),
+    });
+    if (ok) {
+      set({ cloudSynced: true, lastSyncedAt: Date.now() });
+    }
+    return ok;
+  },
+
+  updateProfileInfo: (updates) => {
+    const { player, outfit } = get();
+    const nextGender = updates.gender ?? player.gender;
+    const nextOutfit =
+      updates.gender && updates.gender !== player.gender
+        ? {
+            ...outfit,
+            cap: nextGender === 'female' ? ('hijab' as const) : ('kofia' as const),
+            capColor: 0xffffff,
+          }
+        : outfit;
+    set({
+      player: {
+        ...player,
+        name: updates.name?.trim() ? updates.name.trim() : player.name,
+        gender: nextGender,
+        madrasahName: updates.madrasahName?.trim() ? updates.madrasahName.trim() : player.madrasahName,
+        avatarUrl: updates.avatarUrl ?? player.avatarUrl,
+      },
+      outfit: nextOutfit,
+      outfitRevision: get().outfitRevision + 1,
+    });
+    setTimeout(() => get().syncToCloud(), 100);
+  },
 
   spend: (cost, changes, log) => {
     const { player } = get();
@@ -208,9 +465,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...player,
         stage: stageFor(player.age, updatedStats.ilm),
         stats: updatedStats,
-        logHistory: [log, ...player.logHistory.slice(0, 19)],
+        logHistory: [log, ...player.logHistory.slice(0, 24)],
       },
     });
+    setTimeout(() => get().syncToCloud(), 200);
     return true;
   },
 
@@ -232,9 +490,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         stage: stageFor(player.age, updatedStats.ilm),
         hifzJuz: Math.min(30, player.hifzJuz + hifzGain),
         stats: updatedStats,
-        logHistory: [log, ...player.logHistory.slice(0, 19)],
+        logHistory: [log, ...player.logHistory.slice(0, 24)],
       },
     });
+    setTimeout(() => get().syncToCloud(), 200);
   },
 
   buyOrEquip: (itemId) => {
@@ -261,10 +520,17 @@ export const useGameStore = create<GameState>((set, get) => ({
             naira: player.stats.naira - item.price,
             barakah: clamp(player.stats.barakah + 2),
           },
-          logHistory: [`Bought ${item.name} from Mallam Idris for ₦${item.price.toLocaleString()}.`, ...player.logHistory.slice(0, 19)],
+          logHistory: [
+            `Bought ${item.name} from Mallam Idris for ₦${item.price.toLocaleString()}.`,
+            ...player.logHistory.slice(0, 24),
+          ],
         },
       });
-      return { ok: true, msg: item.apply ? `Purchased & equipped ${item.name}!` : `Unlocked ${item.name}!` };
+      setTimeout(() => get().syncToCloud(), 200);
+      return {
+        ok: true,
+        msg: item.apply ? `Purchased & equipped ${item.name}!` : `Unlocked ${item.name}!`,
+      };
     }
     if (item.apply) {
       sound.playWalaahTap();
@@ -272,32 +538,261 @@ export const useGameStore = create<GameState>((set, get) => ({
         outfit: { ...outfit, ...item.apply },
         outfitRevision: outfitRevision + 1,
       });
+      setTimeout(() => get().syncToCloud(), 200);
       return { ok: true, msg: `Equipped ${item.name}.` };
     }
     return { ok: true, msg: `You already own ${item.name}.` };
   },
 
-  startRide: (to) => {
-    const { location, player, ride } = get();
-    if (ride) return { ok: false, msg: 'Already on a Danfo!' };
-    if (to === location) return { ok: false, msg: 'You are already here.' };
-    const meta = LOC_META[to];
-    if (player.stats.naira < meta.fare) {
+  rentOrBuyHousing: (tierId, mode) => {
+    const prop = HOUSING_TIERS.find((h) => h.id === tierId);
+    if (!prop) return { ok: false, msg: 'Housing property not found.' };
+    const { player, housing } = get();
+
+    if (tierId === 'ruwaq') {
+      set({
+        housing: { ...housing, tier: 'ruwaq', ownership: 'boarding', rentDueInDays: 0 },
+        player: {
+          ...player,
+          logHistory: ['Moved back into Ruwaq Madrasah Boarding House.', ...player.logHistory.slice(0, 24)],
+        },
+      });
+      setTimeout(() => get().syncToCloud(), 200);
+      return { ok: true, msg: 'Moved into Ruwaq Boarding House (Free lodging).' };
+    }
+
+    const cost = mode === 'buy' ? (prop.buyPrice ?? 0) : prop.rentPrice;
+    if (mode === 'buy' && !prop.buyPrice) {
+      return { ok: false, msg: 'This property cannot be purchased outright.' };
+    }
+    if (player.stats.naira < cost) {
       sound.playPasan();
-      return { ok: false, msg: `Conductor: "Enter with your change o! Fare is ₦${meta.fare}."` };
+      return {
+        ok: false,
+        msg: `Insufficient funds! You need ₦${cost.toLocaleString()} to ${mode} ${prop.name}.`,
+      };
+    }
+
+    sound.playCoin();
+    const barakahGain = mode === 'buy' ? 12 : 5;
+    set({
+      housing: {
+        ...housing,
+        tier: tierId,
+        ownership: mode === 'buy' ? 'owned' : 'rented',
+        rentDueInDays: mode === 'buy' ? 0 : 7,
+      },
+      player: {
+        ...player,
+        stats: {
+          ...player.stats,
+          naira: player.stats.naira - cost,
+          barakah: clamp(player.stats.barakah + barakahGain),
+          energy: 100,
+        },
+        logHistory: [
+          mode === 'buy'
+            ? `Alhamdulillah! Purchased ${prop.name} outright for ₦${cost.toLocaleString()} (+${barakahGain} Barakah)!`
+            : `Rented ${prop.name} for ₦${cost.toLocaleString()} (7-day lease, +${barakahGain} Barakah).`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return {
+      ok: true,
+      msg:
+        mode === 'buy'
+          ? `Masha'Allah! You are now the proud owner of ${prop.name}!`
+          : `Keys collected! You moved into ${prop.name}.`,
+    };
+  },
+
+  payRent: () => {
+    const { housing, player } = get();
+    if (housing.ownership !== 'rented') {
+      return { ok: false, msg: 'You do not have an active rental lease to renew.' };
+    }
+    const prop = HOUSING_TIERS.find((h) => h.id === housing.tier);
+    if (!prop) return { ok: false, msg: 'Property not found.' };
+    if (player.stats.naira < prop.rentPrice) {
+      sound.playPasan();
+      return {
+        ok: false,
+        msg: `You need ₦${prop.rentPrice.toLocaleString()} to extend your rent for ${prop.name}.`,
+      };
     }
     sound.playCoin();
+    set({
+      housing: {
+        ...housing,
+        rentDueInDays: housing.rentDueInDays + 7,
+      },
+      player: {
+        ...player,
+        stats: {
+          ...player.stats,
+          naira: player.stats.naira - prop.rentPrice,
+          barakah: clamp(player.stats.barakah + 2),
+        },
+        logHistory: [
+          `Paid ₦${prop.rentPrice.toLocaleString()} rent renewal for ${prop.name} (+7 days).`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return { ok: true, msg: `Rent renewed! Lease extended to ${housing.rentDueInDays + 7} days.` };
+  },
+
+  buyLifestyleAsset: (assetId) => {
+    const asset = LIFESTYLE_ASSETS.find((a) => a.id === assetId);
+    if (!asset) return { ok: false, msg: 'Asset not found.' };
+    const { housing, player } = get();
+    if (housing.upgrades.includes(assetId)) {
+      return { ok: false, msg: `You already own ${asset.name}.` };
+    }
+    if (player.stats.naira < asset.price) {
+      sound.playPasan();
+      return {
+        ok: false,
+        msg: `You need ₦${asset.price.toLocaleString()} to acquire ${asset.name}.`,
+      };
+    }
+    sound.playCoin();
+    const nextUpgrades = [...housing.upgrades, assetId];
+    set({
+      housing: {
+        ...housing,
+        upgrades: nextUpgrades,
+      },
+      player: {
+        ...player,
+        stats: {
+          ...player.stats,
+          naira: player.stats.naira - asset.price,
+          energy: clamp(player.stats.energy + (asset.energyBonus || 0)),
+          ilm: clamp(player.stats.ilm + (asset.ilmBonus || 0)),
+          barakah: clamp(player.stats.barakah + (asset.barakahBonus || 3)),
+        },
+         inventory: [
+          ...player.inventory,
+          {
+            id: asset.id,
+            name: asset.name,
+            category: 'asset',
+            icon: asset.icon,
+            description: asset.description,
+            effectDescription: asset.benefitLabel,
+            price: asset.price,
+          },
+        ],
+        logHistory: [
+          `Acquired ${asset.name} for ₦${asset.price.toLocaleString()} (${asset.benefitLabel}).`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return { ok: true, msg: `Acquired ${asset.name}! ${asset.benefitLabel}` };
+  },
+
+  completeDailyClassroomLesson: (subject, topicTitle, correct, total) => {
+    const { player, education, housing } = get();
+    const today = getTodayDateKey();
+    const key = `${today}:${subject}`;
+    const alreadyDoneToday = education.completedDailyKeys.includes(key);
+
+    // Calculate bonuses from housing & study assets
+    const prop = HOUSING_TIERS.find((h) => h.id === housing.tier) ?? HOUSING_TIERS[0];
+    const hasDesk = housing.upgrades.includes('asset_desk');
+    const hasMaktabah = housing.upgrades.includes('asset_maktabah');
+    const extraIlm = (hasDesk ? 2 : 0) + (hasMaktabah ? 4 : 0);
+
+    const baseIlm = Math.max(2, correct * 3 + extraIlm);
+    const ilmGain = alreadyDoneToday
+      ? Math.max(1, Math.round(correct * 1.5))
+      : Math.round(baseIlm * (1 + prop.ilmBonusPct / 100));
+
+    const stipend = alreadyDoneToday ? correct * 100 : 400 + correct * 250;
+    const isNewStudyDay = education.lastStudyDate !== today;
+    const nextStreak = isNewStudyDay ? player.streakDays + 1 : player.streakDays;
+
+    const currentMastery = education.subjectMastery[subject] ?? 15;
+    const nextMastery = Math.min(100, currentMastery + (alreadyDoneToday ? 3 : 8 + correct * 2));
+
+    sound.playTakbeer();
+    const nextIlmStat = clamp(player.stats.ilm + ilmGain);
+
+    set({
+      education: {
+        completedDailyKeys: alreadyDoneToday
+          ? education.completedDailyKeys
+          : [...education.completedDailyKeys, key],
+        lastStudyDate: today,
+        totalLessonsCompleted: education.totalLessonsCompleted + 1,
+        subjectMastery: {
+          ...education.subjectMastery,
+          [subject]: nextMastery,
+        },
+      },
+      player: {
+        ...player,
+        stage: stageFor(player.age, nextIlmStat),
+        streakDays: nextStreak,
+        stats: {
+          ...player.stats,
+          ilm: nextIlmStat,
+          taqwa: clamp(player.stats.taqwa + 4),
+          barakah: clamp(player.stats.barakah + (correct === total ? 6 : 3)),
+          naira: player.stats.naira + stipend,
+        },
+        logHistory: [
+          `Completed Classroom Lesson "${topicTitle}" (${correct}/${total}) — Earned +${ilmGain} Ilm & ₦${stipend.toLocaleString()} scholarship stipend!`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return { stipend, ilmGain, alreadyDoneToday };
+  },
+
+  getBusFare: (to) => {
+    const base = LOC_META[to].fare;
+    const { housing } = get();
+    if (housing.upgrades.includes('asset_okada')) return 0;
+    if (housing.upgrades.includes('asset_bicycle')) return Math.round(base * 0.5);
+    return base;
+  },
+
+  startRide: (to) => {
+    const { location, player, ride } = get();
+    if (ride) return { ok: false, msg: 'Already in transit!' };
+    if (to === location) return { ok: false, msg: 'You are already here.' };
+    const meta = LOC_META[to];
+    const fare = get().getBusFare(to);
+    if (player.stats.naira < fare) {
+      sound.playPasan();
+      return { ok: false, msg: `Conductor: "Enter with your change o! Fare is ₦${fare}."` };
+    }
+    if (fare > 0) sound.playCoin();
+    else sound.playWalaahTap();
     set({
       activity: null,
       activeTab: 'compound',
       ride: { from: location, to, label: meta.name, progress: 0 },
       player: {
         ...player,
-        stats: { ...player.stats, naira: player.stats.naira - meta.fare },
-        logHistory: [`Boarded a yellow Danfo heading to ${meta.name} (-₦${meta.fare}).`, ...player.logHistory.slice(0, 19)],
+        stats: { ...player.stats, naira: player.stats.naira - fare },
+        logHistory: [
+          fare === 0
+            ? `Rode your personal Boxer Motorcycle to ${meta.name} (₦0 fare!).`
+            : `Boarded transit heading to ${meta.name} (-₦${fare}).`,
+          ...player.logHistory.slice(0, 24),
+        ],
       },
     });
-    return { ok: true, msg: `Oya enter! Danfo moving to ${meta.name}...` };
+    return { ok: true, msg: `Heading to ${meta.name}...` };
   },
 
   updateRide: (progress) => {
@@ -337,7 +832,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!errand || errand.stage !== 'deliver') return '';
     const elapsed = (Date.now() - errand.startedAt) / 1000;
     const hot = elapsed <= 45;
-    const tip = hot ? 400 : 150;
+    const tip = hot ? 500 : 200;
     set({ errand: null });
     get().reward(
       { naira: tip, barakah: hot ? 4 : 2, taqwa: 2 },
@@ -350,21 +845,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       : `Ustadh Hamza: "Jazakallahu khayran, though it cooled down a bit. Take ₦${tip}."`;
   },
 
-  markSlateTraced: () => {
-    sound.playWalaahTap();
-    const { player, slateTraced } = get();
-    if (slateTraced) return;
+  performSunnahWudu: () => {
+    sound.playWaterWash();
+    const { player } = get();
     set({
-      slateTraced: true,
       player: {
         ...player,
         stats: {
           ...player.stats,
-          ilm: clamp(player.stats.ilm + 4),
+          energy: clamp(player.stats.energy + 12),
+          taqwa: clamp(player.stats.taqwa + 5),
+          barakah: clamp(player.stats.barakah + 3),
         },
-        logHistory: ['Inked Arabic letters onto your wooden Walaah slate with Tadaa ink (+4 Ilm). Now wash it at the well!', ...player.logHistory.slice(0, 19)],
+        logHistory: [
+          'Performed fresh Sunnah Wudu at the compound well (+12 Energy, +5 Taqwa, +3 Barakah).',
+          ...player.logHistory.slice(0, 24),
+        ],
       },
     });
+    setTimeout(() => get().syncToCloud(), 200);
   },
 
   triggerRally: (prayerName) => {
@@ -377,8 +876,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!nextMuted) sound.startBgNasheed();
     set({ isMuted: nextMuted });
   },
-
-  setActiveTab: (tab) => set({ activeTab: tab, activity: null }),
 
   chooseOption: (choice: EventChoice) => {
     const { player } = get();
@@ -405,7 +902,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const newAge = player.age + 1;
     const updatedStage = stageFor(newAge, updatedStats.ilm);
-    const newLogs = [choice.consequences.logMessage, ...player.logHistory.slice(0, 19)];
+    const newLogs = [choice.consequences.logMessage, ...player.logHistory.slice(0, 24)];
 
     set({
       player: {
@@ -418,57 +915,208 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
       currentEvent: null,
     });
+    setTimeout(() => get().syncToCloud(), 200);
+  },
+
+  restAtHome: () => {
+    const { player, housing } = get();
+    const prop = HOUSING_TIERS.find((h) => h.id === housing.tier) ?? HOUSING_TIERS[0];
+
+    // Calculate bonus energy & passive income from lifestyle upgrades
+    let bonusEnergy = 0;
+    let passiveIncome = prop.dailyPassiveIncome;
+    housing.upgrades.forEach((id) => {
+      const a = LIFESTYLE_ASSETS.find((x) => x.id === id);
+      if (a?.energyBonus) bonusEnergy += a.energyBonus;
+      if (a?.dailyPassiveNaira) passiveIncome += a.dailyPassiveNaira;
+    });
+
+    const totalEnergyRestored = Math.min(100, prop.energyRecovery + bonusEnergy);
+    const nextEnergy = clamp(player.stats.energy + totalEnergyRestored);
+
+    // Handle rental countdown
+    let nextHousing = { ...housing };
+    let rentWarning = '';
+    if (housing.ownership === 'rented') {
+      if (housing.rentDueInDays <= 1) {
+        // Auto-renew if affordable, else move back to Ruwaq
+        if (player.stats.naira + passiveIncome >= prop.rentPrice) {
+          passiveIncome -= prop.rentPrice;
+          nextHousing.rentDueInDays = 7;
+          rentWarning = ` Auto-renewed ${prop.name} rent (-₦${prop.rentPrice.toLocaleString()}).`;
+        } else {
+          nextHousing = {
+            ...housing,
+            tier: 'ruwaq',
+            ownership: 'boarding',
+            rentDueInDays: 0,
+          };
+          rentWarning = ' Rent expired and wallet was low — returned to Ruwaq Boarding Dorm.';
+        }
+      } else {
+        nextHousing.rentDueInDays = housing.rentDueInDays - 1;
+      }
+    }
+
+    sound.playTakbeer();
+    const incomeNote =
+      passiveIncome > 0
+        ? ` +₦${passiveIncome.toLocaleString()} passive income.`
+        : '';
+
+    set({
+      housing: nextHousing,
+      player: {
+        ...player,
+        stats: {
+          ...player.stats,
+          energy: nextEnergy,
+          naira: Math.max(0, player.stats.naira + passiveIncome),
+        },
+        streakDays: player.streakDays + 1,
+        logHistory: [
+          `Rested at ${prop.name} (+${totalEnergyRestored} Energy).${incomeNote}${rentWarning}`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+      currentEvent: null,
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return {
+      ok: true,
+      msg: `Rested at ${prop.name} (+${totalEnergyRestored} Energy).${incomeNote}${rentWarning}`,
+    };
   },
 
   nextDay: () => {
-    const { player } = get();
-    const updatedStats = {
-      ...player.stats,
-      energy: Math.min(100, player.stats.energy + 25),
-    };
-
-    const availableEvents = GAME_EVENTS.filter(
-      (ev) => ev.stage === 'all' || ev.stage === player.stage,
-    );
-
-    const randomEvent = availableEvents[Math.floor(Math.random() * availableEvents.length)] || GAME_EVENTS[0];
-
-    sound.playWalaahTap();
-
-    set({
-      player: {
-        ...player,
-        stats: updatedStats,
-        streakDays: player.streakDays + 1,
-      },
-      currentEvent: randomEvent,
-    });
+    get().restAtHome();
   },
 
-  washWalaahSuccess: () => {
-    sound.playWaterWash();
-    const { player, slateTraced } = get();
-    const bonusIlm = slateTraced ? 8 : 5;
-    const bonusNaira = slateTraced ? 150 : 0;
+  prayInRoom: () => {
+    sound.playTakbeer();
+    const { player, housing } = get();
+    const prop = HOUSING_TIERS.find((h) => h.id === housing.tier) ?? HOUSING_TIERS[0];
+    const taqwaGain = housing.tier === 'personal_villa' ? 12 : housing.tier === 'mini_flat' ? 10 : 8;
+    const barakahGain = housing.tier === 'personal_villa' ? 8 : 5;
     set({
-      slateTraced: false,
       player: {
         ...player,
-        stage: stageFor(player.age, clamp(player.stats.ilm + bonusIlm)),
         stats: {
           ...player.stats,
-          ilm: clamp(player.stats.ilm + bonusIlm),
-          taqwa: clamp(player.stats.taqwa + 3),
-          naira: player.stats.naira + bonusNaira,
+          taqwa: clamp(player.stats.taqwa + taqwaGain),
+          barakah: clamp(player.stats.barakah + barakahGain),
+          energy: clamp(player.stats.energy + 8),
         },
         logHistory: [
-          slateTraced
-            ? 'Washed your inked Walaah slate at the well! Memorized the verse by heart (+8 Ilm, +₦150).'
-            : 'Washed and cleaned your wooden Walaah board sparkling clean in the sun (+5 Ilm).',
-          ...player.logHistory.slice(0, 19),
+          `Prayed 2 Raka'at Nafl & made heartfelt Dua on the Sajjadah in ${prop.name} (+${taqwaGain} Taqwa, +${barakahGain} Barakah, +8 Energy).`,
+          ...player.logHistory.slice(0, 24),
         ],
       },
     });
+    setTimeout(() => get().syncToCloud(), 200);
+    return `Masha'Allah! You prayed 2 Raka'at Nafl on your Sajjadah in ${prop.name} (+${taqwaGain} Taqwa, +${barakahGain} Barakah, +8 Energy).`;
+  },
+
+  studyAtDesk: () => {
+    sound.playWalaahTap();
+    const { player, housing } = get();
+    if (player.stats.energy < 8) {
+      sound.playPasan();
+      return 'You are too tired to revise! Sleep on your bed/mat first to restore Energy.';
+    }
+    const hasDesk = housing.upgrades.includes('asset_desk');
+    const hasMaktabah = housing.upgrades.includes('asset_maktabah');
+    const hasSolar = housing.upgrades.includes('asset_solar');
+    const ilmGain = 4 + (hasDesk ? 2 : 0) + (hasMaktabah ? 4 : 0) + (hasSolar ? 2 : 0);
+    const nextIlm = clamp(player.stats.ilm + ilmGain);
+    set({
+      player: {
+        ...player,
+        stage: stageFor(player.age, nextIlm),
+        stats: {
+          ...player.stats,
+          ilm: nextIlm,
+          taqwa: clamp(player.stats.taqwa + 3),
+          energy: clamp(player.stats.energy - 6),
+        },
+        logHistory: [
+          `Revised Arabic & Fiqh notes at your personal study desk (+${ilmGain} Ilm, +3 Taqwa, -6 Energy).`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    setTimeout(() => get().syncToCloud(), 200);
+    return `Revised your books at the study desk! Earned +${ilmGain} Ilm & +3 Taqwa (-6 Energy).`;
+  },
+
+  sendSalaamToPeer: (peer) => {
+    const { greetedPeerIds, player } = get();
+    if (greetedPeerIds.includes(peer.uid)) {
+      return { ok: false, msg: `You already exchanged Salaam with ${peer.name} recently!` };
+    }
+    sound.playTakbeer();
+    set({
+      greetedPeerIds: [...greetedPeerIds, peer.uid],
+      player: {
+        ...player,
+        stats: {
+          ...player.stats,
+          taqwa: clamp(player.stats.taqwa + 3),
+          barakah: clamp(player.stats.barakah + 4),
+        },
+        logHistory: [
+          `Sent Salaam & Dua of Barakah to online scholar ${peer.name} (+3 Taqwa, +4 Barakah).`,
+          ...player.logHistory.slice(0, 24),
+        ],
+      },
+    });
+    return {
+      ok: true,
+      msg: `Wa alaykumus-salam! ${peer.name} returned your greeting with a warm Dua (+3 Taqwa, +4 Barakah)!`,
+    };
+  },
+
+  organizeGameWithPeer: (peer, gameType, wager) => {
+    const { player, authUser, challenges } = get();
+    if (player.stats.naira < wager) {
+      sound.playPasan();
+      return { ok: false, msg: `You need at least ₦${wager.toLocaleString()} to put up this match prize.` };
+    }
+    sound.playCoin();
+
+    const newChallenge: Omit<GameChallenge, 'id'> = {
+      fromUid: authUser?.uid || player.id,
+      fromName: player.name,
+      toUid: peer.uid,
+      toName: peer.name,
+      gameType,
+      wager,
+      status: 'accepted',
+      createdAt: Date.now(),
+    };
+
+    sendGameChallengeToCloud(newChallenge);
+    const localChallenge: GameChallenge = {
+      ...newChallenge,
+      id: 'match_' + Date.now(),
+    };
+    set({ challenges: [localChallenge, ...challenges] });
+
+    // Launch the selected interactive match immediately so players can play right away!
+    if (gameType === 'ayo') {
+      set({ activity: 'ayo', activeTab: 'compound' });
+    } else if (gameType === 'football') {
+      set({ activity: 'football', activeTab: 'compound' });
+    } else if (gameType === 'tenten') {
+      set({ activity: 'tenten', activeTab: 'compound' });
+    } else {
+      set({ activeTab: 'classroom' });
+    }
+
+    return {
+      ok: true,
+      msg: `Match organized against ${peer.name}! Entering ${gameType.replace('_', ' ')} arena...`,
+    };
   },
 
   quizAnswerSuccess: (points: number) => {
@@ -483,17 +1131,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...player.stats,
           ilm: nextIlm,
           barakah: clamp(player.stats.barakah + 5),
-          naira: player.stats.naira + 1000,
+          naira: player.stats.naira + 600,
         },
-        logHistory: [`Answered the Quran recitation quiz correctly! Received ₦1,000 and +${points} Ilm!`, ...player.logHistory.slice(0, 19)],
+        logHistory: [
+          `Answered the Musabaqah question correctly! Received ₦600 and +${points} Ilm!`,
+          ...player.logHistory.slice(0, 24),
+        ],
       },
     });
+    setTimeout(() => get().syncToCloud(), 200);
   },
 
   addMinbarPost: (text: string, authorName?: string) => {
-    const { minbarPosts, player } = get();
+    const { minbarPosts, player, authUser } = get();
     const newPost: MinbarPost = {
       id: Date.now().toString(),
+      authorId: authUser?.uid || player.id,
       authorName: authorName || player.name,
       authorStage: player.stage,
       text,
@@ -503,21 +1156,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
     sound.playTakbeer();
     set({ minbarPosts: [newPost, ...minbarPosts] });
+    publishMinbarPostToCloud({
+      authorId: newPost.authorId,
+      authorName: newPost.authorName,
+      authorStage: newPost.authorStage,
+      text: newPost.text,
+      likes: 1,
+      takbeers: 1,
+      timestamp: newPost.timestamp,
+    });
   },
 
   resetGame: () => {
     set({
       player: {
         ...INITIAL_PLAYER,
-        id: 'guest_player_' + Math.random().toString(36).substring(7),
+        id: 'scholar_' + Math.random().toString(36).substring(2, 9),
       },
-      currentEvent: GAME_EVENTS[0],
+      housing: { ...INITIAL_HOUSING },
+      education: { ...INITIAL_EDUCATION },
+      currentEvent: null,
       activeTab: 'compound',
       activity: null,
       location: 'school',
       ride: null,
       errand: null,
-      slateTraced: false,
       owned: [...DEFAULT_OWNED],
       outfit: { ...DEFAULT_OUTFIT },
       outfitRevision: get().outfitRevision + 1,

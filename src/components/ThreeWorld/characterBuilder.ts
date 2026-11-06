@@ -1,8 +1,20 @@
 import * as THREE from 'three';
 
 export type CapStyle = 'kofia' | 'turban' | 'hijab' | 'fila' | 'none';
-export type Prop = 'slate' | 'cane' | 'kettle' | 'tesbih' | 'none';
-export type Pose = 'idle' | 'walk' | 'run' | 'sit' | 'recite' | 'wave' | 'alfa';
+export type Prop = 'book' | 'cane' | 'kettle' | 'tesbih' | 'none';
+export type Pose =
+  | 'idle'
+  | 'walk'
+  | 'run'
+  | 'sit'
+  | 'chair_sit'
+  | 'crouch'
+  | 'kneel'
+  | 'pray'
+  | 'sleep'
+  | 'recite'
+  | 'wave'
+  | 'alfa';
 
 export interface CharacterOptions {
   robe: number;
@@ -111,10 +123,11 @@ export function buildCharacter(o: CharacterOptions): Character {
 
   // ---- Props (held in right hand, tesbih in left) ----
   const prop = o.prop ?? 'none';
-  if (prop === 'slate') {
-    const s = add(armR, new THREE.BoxGeometry(0.24, 0.32, 0.03), M(0x8d5a2b, 0.9), 0.04, -0.55, 0.13);
-    s.rotation.x = -0.25;
-    add(s, new THREE.PlaneGeometry(0.18, 0.04), M(0x111111), 0, 0.04, 0.02);
+  if (prop === 'book') {
+    const b = add(armR, new THREE.BoxGeometry(0.22, 0.28, 0.045), M(0x0d5c3a, 0.7), 0.04, -0.55, 0.13);
+    b.rotation.x = -0.25;
+    add(b, new THREE.BoxGeometry(0.19, 0.25, 0.05), M(0xfdf6e3, 0.9), 0.01, 0, 0);
+    add(b, new THREE.PlaneGeometry(0.14, 0.08), M(0xf5b335, 0.4), 0, 0.02, 0.026);
   } else if (prop === 'cane') {
     const c = add(armR, new THREE.CylinderGeometry(0.014, 0.02, 1.0, 6), M(0x3e2723, 0.7), 0, -0.55, 0.3);
     c.rotation.x = Math.PI / 2.4;
@@ -127,14 +140,25 @@ export function buildCharacter(o: CharacterOptions): Character {
     t.rotation.y = Math.PI / 2;
   }
 
-  // ---- Legs (hip pivots) ----
+  // ---- Legs (hip pivots + knee joints) ----
   const makeLeg = (side: 1 | -1) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(0.1 * side, 0.36, 0);
-    root.add(pivot);
-    add(pivot, new THREE.CylinderGeometry(0.06, 0.055, 0.3, 8), skin, 0, -0.15, 0);
-    add(pivot, new THREE.BoxGeometry(0.11, 0.06, 0.22), M(0x2b2b2b, 0.6), 0, -0.33, 0.05);
-    return pivot;
+    const hip = new THREE.Group();
+    hip.position.set(0.1 * side, 0.36, 0);
+    root.add(hip);
+
+    // Thigh
+    add(hip, new THREE.CylinderGeometry(0.06, 0.055, 0.2, 8), skin, 0, -0.1, 0);
+
+    // Knee pivot
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.2, 0);
+    hip.add(knee);
+
+    // Shin & shoe
+    add(knee, new THREE.CylinderGeometry(0.055, 0.05, 0.18, 8), skin, 0, -0.09, 0);
+    add(knee, new THREE.BoxGeometry(0.11, 0.06, 0.22), M(0x2b2b2b, 0.6), 0, -0.21, 0.05);
+
+    return { hip, knee };
   };
   const legL = makeLeg(-1);
   const legR = makeLeg(1);
@@ -146,12 +170,12 @@ export function buildCharacter(o: CharacterOptions): Character {
   // ---- Animation state ----
   let pose: Pose = 'idle';
   const phase = o.phase ?? Math.random() * 10;
-  const cur = { lx: 0, lz: 0, rx: 0, rz: 0, legL: 0, legR: 0, bodyY: 0, lean: 0, sit: 0, headY: 0 };
-  const holdsRight = prop === 'slate' || prop === 'kettle' || prop === 'cane';
+  const cur = { lx: 0, lz: 0, rx: 0, rz: 0, legL: 0, legR: 0, bodyY: 0, bodyZ: 0, lean: 0, sit: 0, headY: 0 };
+  const holdsRight = prop === 'book' || prop === 'kettle' || prop === 'cane';
 
   const update = (t: number, dt: number) => {
     const k = 1 - Math.exp(-dt * 10);
-    const tg = { lx: 0, lz: -0.06, rx: 0, rz: 0.06, legL: 0, legR: 0, bodyY: 0, lean: 0, sit: 0, headY: 0 };
+    const tg = { lx: 0, lz: -0.06, rx: 0, rz: 0.06, legL: 0, legR: 0, bodyY: 0, bodyZ: 0, lean: 0, sit: 0, headY: 0 };
     const tt = t + phase;
 
     switch (pose) {
@@ -168,10 +192,81 @@ export function buildCharacter(o: CharacterOptions): Character {
         tg.lean = run ? 0.2 : 0.07;
         break;
       }
+      case 'chair_sit':
+        tg.sit = 0; // Torso stays elevated at chair height
+        tg.bodyY = -0.04;
+        tg.lean = 0.14; // Attentive posture leaning toward the desk and mushaf
+        tg.lx = -0.72; // Left arm extended onto desk surface
+        tg.rx = -0.72; // Right arm extended onto desk surface
+        tg.lz = 0.22; // Elbows rested comfortably
+        tg.rz = -0.22;
+        tg.headY = Math.sin(tt * 2.2) * 0.08; // Gentle nod while reading
+        break;
       case 'sit':
         tg.sit = 1;
         tg.lx = -0.5;
         tg.rx = -0.5;
+        break;
+      case 'crouch':
+        tg.bodyY = -0.32;
+        tg.lean = 0.42;
+        tg.legL = -0.65;
+        tg.legR = 0.45;
+        tg.lx = -0.45;
+        tg.rx = -0.45;
+        break;
+      case 'kneel':
+        tg.sit = 0.88;
+        tg.bodyY = 0.04;
+        tg.lean = 0.06;
+        tg.lx = -0.65;
+        tg.rx = -0.65;
+        tg.lz = 0.12;
+        tg.rz = -0.12;
+        break;
+      case 'pray': {
+        // Authentic 4-phase Salah animation cycle (Qiyam -> Ruku -> Sujood -> Tashahhud)
+        const cycle = (t * 0.45) % 4;
+        if (cycle < 1.0) {
+          // Qiyam (standing, hands folded over chest)
+          tg.sit = 0;
+          tg.lean = 0.04;
+          tg.lx = -0.95;
+          tg.rx = -0.95;
+          tg.lz = 0.38;
+          tg.rz = -0.38;
+        } else if (cycle < 1.8) {
+          // Ruku (bowing at waist, hands on knees)
+          tg.sit = 0;
+          tg.bodyY = -0.12;
+          tg.lean = 1.15;
+          tg.lx = -0.8;
+          tg.rx = -0.8;
+        } else if (cycle < 3.0) {
+          // Sujood (prostration on the Sajjadah)
+          tg.sit = 1;
+          tg.bodyY = -0.15;
+          tg.lean = 1.32;
+          tg.lx = -1.35;
+          tg.rx = -1.35;
+          tg.lz = 0.18;
+          tg.rz = -0.18;
+        } else {
+          // Jalsah / Tashahhud (kneeling)
+          tg.sit = 0.92;
+          tg.lean = 0.08;
+          tg.lx = -0.65;
+          tg.rx = -0.65;
+        }
+        break;
+      }
+      case 'sleep':
+        tg.sit = 1;
+        tg.bodyY = 0.72;
+        tg.bodyZ = -0.45;
+        tg.lean = -Math.PI / 2;
+        tg.lx = -0.15;
+        tg.rx = -0.15;
         break;
       case 'recite':
         tg.sit = 1;
@@ -202,16 +297,27 @@ export function buildCharacter(o: CharacterOptions): Character {
 
     armL.rotation.set(cur.lx, 0, cur.lz);
     armR.rotation.set(cur.rx, 0, cur.rz);
-    legL.rotation.x = cur.legL;
-    legR.rotation.x = cur.legR;
     body.position.y = -0.55 * cur.sit + cur.bodyY;
+    body.position.z = cur.bodyZ;
     body.rotation.x = cur.lean;
     head.rotation.y = cur.headY;
 
-    const sitting = cur.sit > 0.5;
-    skirt.visible = sitting;
-    legL.visible = !sitting;
-    legR.visible = !sitting;
+    const sittingOnFloor = cur.sit > 0.5 && pose !== 'chair_sit';
+    skirt.visible = sittingOnFloor && pose !== 'sleep';
+    legL.hip.visible = !sittingOnFloor;
+    legR.hip.visible = !sittingOnFloor;
+
+    if (pose === 'chair_sit') {
+      legL.hip.rotation.x = -Math.PI / 2 + 0.05;
+      legR.hip.rotation.x = -Math.PI / 2 + 0.05;
+      legL.knee.rotation.x = Math.PI / 2 - 0.05;
+      legR.knee.rotation.x = Math.PI / 2 - 0.05;
+    } else {
+      legL.hip.rotation.x = cur.legL;
+      legR.hip.rotation.x = cur.legR;
+      legL.knee.rotation.x = 0;
+      legR.knee.rotation.x = 0;
+    }
   };
 
   return {
