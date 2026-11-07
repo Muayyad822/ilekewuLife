@@ -33,11 +33,10 @@ import {
   User,
 } from 'lucide-react';
 
-const STAGES: Record<string, { title: string; emoji: string }> = {
-  omo_kewu: { title: 'Omo Kewu', emoji: '📘' },
-  arowo_kewu: { title: 'Arowo-Kewu', emoji: '📿' },
-  markaziy: { title: 'Markaziy', emoji: '📚' },
-  sheikh_agba: { title: 'Sheikh Agba', emoji: '👑' },
+const LEARNER_TIERS: Record<string, { title: string; emoji: string }> = {
+  starter: { title: 'Starter Student', emoji: '🌱' },
+  standard: { title: 'Madrasah Scholar', emoji: '📖' },
+  advanced: { title: 'Senior Faqih', emoji: '✨' },
 };
 
 const HOUSING_SHORT: Record<string, string> = {
@@ -63,9 +62,10 @@ const Meter: React.FC<{ icon: React.ReactNode; value: number; color: string; lab
 
 export const TopLeftHud: React.FC = () => {
   const player = useGameStore((s) => s.player);
+  const education = useGameStore((s) => s.education);
   const setActiveTab = useGameStore((s) => s.setActiveTab);
   const s = player.stats;
-  const stage = STAGES[player.stage] ?? STAGES.omo_kewu;
+  const tier = LEARNER_TIERS[education.learnerTier ?? 'starter'] ?? LEARNER_TIERS.starter;
 
   // Connect Firebase Auth, Online Presence, Challenges & Minbar Feed once on mount
   useEffect(() => {
@@ -127,13 +127,13 @@ export const TopLeftHud: React.FC = () => {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={player.avatarUrl} alt={player.name} className="w-full h-full object-cover" />
           ) : (
-            stage.emoji
+            tier.emoji
           )}
         </div>
         <div className="min-w-0 flex-1 leading-tight">
           <div className="kw-display text-[11.5px] sm:text-[14px] font-extrabold truncate">{player.name}</div>
           <div className="text-[9px] sm:text-[10px] text-kw-gold-soft font-semibold truncate">
-            {stage.title}
+            {tier.title}
           </div>
         </div>
         <div className="pl-0.5 sm:pl-1 text-right shrink-0">

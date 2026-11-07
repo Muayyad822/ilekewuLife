@@ -25,6 +25,7 @@ export const AuthGate: React.FC = () => {
   const setIsGuest = useGameStore((s) => s.setIsGuest);
   const setAuthUser = useGameStore((s) => s.setAuthUser);
   const updateProfileInfo = useGameStore((s) => s.updateProfileInfo);
+  const setLearnerTier = useGameStore((s) => s.setLearnerTier);
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);
   const syncToCloud = useGameStore((s) => s.syncToCloud);
 
@@ -32,6 +33,7 @@ export const AuthGate: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [tier, setTier] = useState<'starter' | 'standard' | 'advanced'>('starter');
   const [madrasah, setMadrasah] = useState('Markaz Agege, Lagos');
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [busy, setBusy] = useState(false);
@@ -83,6 +85,7 @@ export const AuthGate: React.FC = () => {
           gender,
           madrasahName: madrasah.trim(),
         });
+        setLearnerTier(tier);
         await syncToCloud();
       } else {
         const user = await signInWithEmail(email.trim(), password);
@@ -245,6 +248,50 @@ export const AuthGate: React.FC = () => {
                     }`}
                   >
                     <span>🧕</span> Sister (Hijab)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-300 mb-1 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Learning Level & Placement
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTier('starter')}
+                    className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer ${
+                      tier === 'starter'
+                        ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300 font-extrabold'
+                        : 'border-stone-800 bg-stone-950 text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <div className="text-xs">🌱 Starter</div>
+                    <div className="text-[9px] opacity-70">Letters & Words</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTier('standard')}
+                    className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer ${
+                      tier === 'standard'
+                        ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-extrabold'
+                        : 'border-stone-800 bg-stone-950 text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <div className="text-xs">📖 Standard</div>
+                    <div className="text-[9px] opacity-70">Grammar & Fiqh</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTier('advanced')}
+                    className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer ${
+                      tier === 'advanced'
+                        ? 'border-purple-400 bg-purple-400/10 text-purple-300 font-extrabold'
+                        : 'border-stone-800 bg-stone-950 text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <div className="text-xs">✨ Advanced</div>
+                    <div className="text-[9px] opacity-70">Texts & Irab</div>
                   </button>
                 </div>
               </div>

@@ -11,6 +11,8 @@ import {
   loadCloudState,
   uploadMediaFree,
 } from '@/lib/firebase';
+import { requestNotificationPermission, scheduleDailyMadrasahReminder } from '@/lib/reminders';
+import { SkillTree } from '@/components/SkillTree';
 import {
   User,
   Cloud,
@@ -23,6 +25,7 @@ import {
   ShieldCheck,
   KeyRound,
   Building2,
+  Bell,
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
@@ -153,8 +156,12 @@ export const ProfileView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-extrabold">{player.name}</h3>
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                {player.stage.replace('_', ' ')}
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                {education.learnerTier === 'advanced'
+                  ? 'Senior Faqih'
+                  : education.learnerTier === 'standard'
+                  ? 'Madrasah Scholar'
+                  : 'Starter Student'}
               </span>
             </div>
             <p className="text-xs text-stone-300">
@@ -272,6 +279,31 @@ export const ProfileView: React.FC = () => {
             >
               Save Profile
             </button>
+
+            {/* Daily Madrasah Reminder Toggle */}
+            <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5 text-amber-500" /> Daily Lesson Reminders
+                </div>
+                <div className="text-[10px] text-stone-500">Alerts to maintain your learning streak</div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const granted = await requestNotificationPermission();
+                  if (granted) {
+                    scheduleDailyMadrasahReminder(16, 0);
+                    setFeedback('✓ Daily reminders enabled! You will be notified for daily lessons.');
+                  } else {
+                    setFeedback('Notification permission not granted in browser settings.');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[11px] cursor-pointer transition shrink-0"
+              >
+                Enable
+              </button>
+            </div>
           </form>
 
           {/* Account Sign-In */}
@@ -373,25 +405,31 @@ export const ProfileView: React.FC = () => {
           </div>
 
           {/* Academic Record & Recent Log History */}
-          <div className="md:col-span-2 bg-white rounded-2xl border border-stone-200 p-5 space-y-3 shadow-2xs">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
-              <h4 className="font-extrabold text-sm text-stone-900">
-                📜 Scholar Record ({education.totalLessonsCompleted} Classroom Lessons Completed)
-              </h4>
-              <span className="text-xs font-bold text-emerald-700">
-                Streak: {player.streakDays} Days
-              </span>
+          <div className="md:col-span-2 space-y-4">
+            <div className="bg-stone-950 border border-emerald-500/20 rounded-2xl p-4 sm:p-5 shadow-inner">
+              <SkillTree subjectMastery={education.subjectMastery} />
             </div>
-            <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
-              {player.logHistory.map((entry, idx) => (
-                <div
-                  key={idx}
-                  className="text-xs text-stone-700 bg-stone-50 border border-stone-200/80 rounded-xl px-3 py-2 flex items-start gap-2"
-                >
-                  <span className="text-amber-600 font-bold">•</span>
-                  <span>{entry}</span>
-                </div>
-              ))}
+
+            <div className="bg-white rounded-2xl border border-stone-200 p-5 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                <h4 className="font-extrabold text-sm text-stone-900">
+                  📜 Scholar Record ({education.totalLessonsCompleted} Classroom Lessons Completed)
+                </h4>
+                <span className="text-xs font-bold text-emerald-700">
+                  Streak: {player.streakDays} Days
+                </span>
+              </div>
+              <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                {player.logHistory.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className="text-xs text-stone-700 bg-stone-50 border border-stone-200/80 rounded-xl px-3 py-2 flex items-start gap-2"
+                  >
+                    <span className="text-amber-600 font-bold">•</span>
+                    <span>{entry}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

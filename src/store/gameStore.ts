@@ -20,6 +20,7 @@ import {
   GameChallenge,
   MountVehicle,
   FurnitureTransform,
+  LearnerTier,
 } from '@/types/game';
 import { GAME_EVENTS } from '@/data/events';
 import {
@@ -138,6 +139,7 @@ interface GameState {
     correct: number,
     total: number,
   ) => { stipend: number; ilmGain: number; alreadyDoneToday: boolean };
+  setLearnerTier: (tier: LearnerTier) => void;
   updateProfileInfo: (updates: {
     name?: string;
     gender?: 'male' | 'female';
@@ -356,7 +358,7 @@ export const useGameStore = create<GameState>()(
       isGuest: false,
       cloudSynced: false,
       lastSyncedAt: null,
-      onlinePeers: CAMPUS_ONLINE_SCHOLARS,
+      onlinePeers: [],
       challenges: [],
       greetedPeerIds: [],
 
@@ -450,13 +452,9 @@ export const useGameStore = create<GameState>()(
 
   setOnlinePeers: (cloudPeers) => {
     const { authUser } = get();
-    const filteredCloud = cloudPeers.filter((p) => p.uid !== authUser?.uid);
-    const mergedMap = new Map<string, OnlinePeer>();
-    filteredCloud.forEach((p) => mergedMap.set(p.uid, p));
-    CAMPUS_ONLINE_SCHOLARS.forEach((p) => {
-      if (!mergedMap.has(p.uid)) mergedMap.set(p.uid, p);
-    });
-    set({ onlinePeers: Array.from(mergedMap.values()) });
+    // Only display genuine authenticated users from the cloud presence node
+    const realPeers = cloudPeers.filter((p) => p.uid !== authUser?.uid);
+    set({ onlinePeers: realPeers });
   },
 
   setChallenges: (challenges) => set({ challenges }),
@@ -830,6 +828,17 @@ export const useGameStore = create<GameState>()(
     });
     setTimeout(() => get().syncToCloud(), 200);
     return { stipend, ilmGain, alreadyDoneToday };
+  },
+
+  setLearnerTier: (tier) => {
+    const { education } = get();
+    set({
+      education: {
+        ...education,
+        learnerTier: tier,
+      },
+    });
+    triggerAutoSave();
   },
 
   getBusFare: (to) => {

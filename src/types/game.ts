@@ -1,5 +1,7 @@
 export type LifeStage = 'omo_kewu' | 'arowo_kewu' | 'markaziy' | 'sheikh_agba';
 
+export type LearnerTier = 'starter' | 'standard' | 'advanced';
+
 export type MountVehicle = 'none' | 'bicycle' | 'okada';
 
 export interface PlayerStats {
@@ -82,6 +84,10 @@ export interface PlayerEducation {
   lastStudyDate: string;        // "YYYY-MM-DD"
   totalLessonsCompleted: number;
   subjectMastery: Record<SubjectId, number>; // 0-100 mastery per subject
+  learnerTier?: LearnerTier;
+  lessonProgress?: Record<string, { crowns: number; box: number; nextDue: string; lastSeen: string }>;
+  bestStreak?: number;
+  makeupAvailableUntil?: string; // date string YYYY-MM-DD for 24h grace repair
 }
 
 export interface PlayerProfile {
