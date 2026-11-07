@@ -214,7 +214,7 @@ export const ClassroomView: React.FC = () => {
                   <span className="font-bold text-stone-300 flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5 text-emerald-400" /> Classmates in Halqah ({onlinePeers.length + 1})
                   </span>
-                  <span className="text-[11px] text-stone-400">Tap to greet</span>
+                  <span className="text-[11px] text-stone-400">Tap a classmate to greet or quiz-duel</span>
                 </div>
 
                 {peerToast && (
@@ -261,6 +261,16 @@ export const ClassroomView: React.FC = () => {
                           className="p-1.5 rounded-lg bg-white/10 hover:bg-emerald-600 text-xs cursor-pointer transition"
                         >
                           <Hand className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const res = organizeGameWithPeer(peer, 'quiz_duel', 1000);
+                            setPeerToast(res.msg);
+                          }}
+                          title="Challenge to Classroom Speed Duel (₦1,000 prize)"
+                          className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 text-xs cursor-pointer transition"
+                        >
+                          <Swords className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     ))

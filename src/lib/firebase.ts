@@ -21,16 +21,24 @@ import {
   getDoc,
   collection,
   query,
+  where,
   orderBy,
   limit,
   onSnapshot,
   addDoc,
+  updateDoc,
+  deleteDoc,
+  arrayUnion,
+  increment,
 } from 'firebase/firestore';
 import { getAnalytics, isSupported as isAnalyticsSupported, Analytics } from 'firebase/analytics';
 import {
   OnlinePeer,
   GameChallenge,
+  PeerInteraction,
+  MultiplayerMatchRoom,
   MinbarPost,
+  MinbarComment,
   PlayerProfile,
   PlayerHousing,
   PlayerEducation,
@@ -209,6 +217,56 @@ export function subscribeOnlinePeers(cb: (peers: OnlinePeer[]) => void): () => v
   }
 }
 
+export async function sendPeerInteractionToCloud(
+  interaction: Omit<PeerInteraction, 'id'>,
+): Promise<string | null> {
+  if (!db) return null;
+  try {
+    const ref = await addDoc(collection(db, 'interactions'), interaction);
+    return ref.id;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeIncomingInteractions(
+  targetUid: string,
+  cb: (interaction: PeerInteraction) => void,
+): () => void {
+  if (!db || !targetUid) return () => {};
+  try {
+    const seenIds = new Set<string>();
+    const sessionStartTime = Date.now() - 45000; // deliver interactions sent in last 45 seconds
+
+    const q = query(
+      collection(db, 'interactions'),
+      where('toUid', '==', targetUid),
+      limit(15),
+    );
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        snap.forEach((docSnap) => {
+          const id = docSnap.id;
+          if (seenIds.has(id)) return;
+          const data = docSnap.data() as Omit<PeerInteraction, 'id'>;
+          if (data.createdAt && data.createdAt >= sessionStartTime) {
+            seenIds.add(id);
+            cb({ id, ...data });
+          }
+        });
+      },
+      (err) => {
+        console.warn('Interactions subscription notice:', err);
+      },
+    );
+  } catch (err) {
+    console.warn('Could not subscribe to incoming interactions:', err);
+    return () => {};
+  }
+}
+
 export async function sendGameChallengeToCloud(
   challenge: Omit<GameChallenge, 'id'>,
 ): Promise<string | null> {
@@ -219,6 +277,16 @@ export async function sendGameChallengeToCloud(
   } catch {
     return null;
   }
+}
+
+export async function updateGameChallengeInCloud(
+  challengeId: string,
+  updates: Partial<GameChallenge>,
+): Promise<void> {
+  if (!db || !challengeId) return;
+  try {
+    await setDoc(doc(db, 'challenges', challengeId), updates, { merge: true });
+  } catch {}
 }
 
 export function subscribeChallenges(cb: (challenges: GameChallenge[]) => void): () => void {
@@ -243,12 +311,116 @@ export function subscribeChallenges(cb: (challenges: GameChallenge[]) => void): 
   }
 }
 
-export async function publishMinbarPostToCloud(post: Omit<MinbarPost, 'id'>): Promise<void> {
-  if (!db) return;
+export async function createOrJoinMatchRoom(
+  room: MultiplayerMatchRoom,
+): Promise<void> {
+  if (!db || !room.id) return;
   try {
-    await addDoc(collection(db, 'minbar_posts'), post);
+    await setDoc(doc(db, 'match_rooms', room.id), room, { merge: true });
+  } catch (err) {
+    console.warn('Could not create or join match room:', err);
+  }
+}
+
+export async function syncMatchRoomMove(
+  roomId: string,
+  state: Record<string, any>,
+  turn: 'player1' | 'player2',
+  winnerUid?: string,
+): Promise<void> {
+  if (!db || !roomId) return;
+  try {
+    await setDoc(
+      doc(db, 'match_rooms', roomId),
+      {
+        state,
+        turn,
+        ...(winnerUid ? { winnerUid, status: 'completed' } : {}),
+        lastMoveAt: Date.now(),
+      },
+      { merge: true },
+    );
+  } catch {}
+}
+
+export function subscribeMatchRoom(
+  roomId: string,
+  cb: (room: MultiplayerMatchRoom | null) => void,
+): () => void {
+  if (!db || !roomId) return () => {};
+  try {
+    return onSnapshot(
+      doc(db, 'match_rooms', roomId),
+      (snap) => {
+        if (snap.exists()) {
+          cb({ id: snap.id, ...(snap.data() as Omit<MultiplayerMatchRoom, 'id'>) });
+        } else {
+          cb(null);
+        }
+      },
+      () => cb(null),
+    );
   } catch {
-    // Fallback to local state
+    return () => {};
+  }
+}
+
+export async function publishMinbarPostToCloud(post: Omit<MinbarPost, 'id'>): Promise<string | null> {
+  if (!db) return null;
+  try {
+    const ref = await addDoc(collection(db, 'minbar_posts'), post);
+    return ref.id;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateMinbarPostInCloud(
+  postId: string,
+  updates: Partial<MinbarPost>,
+): Promise<void> {
+  if (!db || !postId) return;
+  try {
+    await updateDoc(doc(db, 'minbar_posts', postId), updates);
+  } catch (err) {
+    console.warn('Could not update minbar post in cloud:', err);
+  }
+}
+
+export async function deleteMinbarPostFromCloud(postId: string): Promise<void> {
+  if (!db || !postId) return;
+  try {
+    await deleteDoc(doc(db, 'minbar_posts', postId));
+  } catch (err) {
+    console.warn('Could not delete minbar post from cloud:', err);
+  }
+}
+
+export async function incrementMinbarReaction(
+  postId: string,
+  field: 'takbeers' | 'likes',
+): Promise<void> {
+  if (!db || !postId) return;
+  try {
+    await updateDoc(doc(db, 'minbar_posts', postId), {
+      [field]: increment(1),
+    });
+  } catch (err) {
+    console.warn('Could not increment minbar reaction:', err);
+  }
+}
+
+export async function addCommentToMinbarPost(
+  postId: string,
+  comment: MinbarComment,
+): Promise<void> {
+  if (!db || !postId) return;
+  try {
+    await updateDoc(doc(db, 'minbar_posts', postId), {
+      comments: arrayUnion(comment),
+    });
+  } catch (err) {
+    console.warn('Could not add comment to minbar post:', err);
   }
 }
 
@@ -259,12 +431,13 @@ export function subscribeMinbarPosts(cb: (posts: MinbarPost[]) => void): () => v
     return onSnapshot(
       q,
       (snap) => {
-        if (snap.empty) return;
         const posts: MinbarPost[] = [];
         snap.forEach((d) => posts.push({ id: d.id, ...(d.data() as Omit<MinbarPost, 'id'>) }));
         cb(posts);
       },
-      () => {},
+      () => {
+        cb([]);
+      },
     );
   } catch {
     return () => {};
@@ -361,6 +534,37 @@ export async function uploadMediaFree(file: File): Promise<string> {
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(blob);
+  });
+}
+
+export async function uploadAudioFree(audioBlob: Blob): Promise<string> {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+  if (cloudName && uploadPreset) {
+    try {
+      const form = new FormData();
+      form.append('file', audioBlob, 'voice_note.webm');
+      form.append('upload_preset', uploadPreset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.secure_url) return json.secure_url as string;
+      }
+    } catch (err) {
+      console.warn('Audio cloud upload warning:', err);
+    }
+  }
+
+  // Fallback to data URL
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Failed to encode voice note'));
+    reader.readAsDataURL(audioBlob);
   });
 }
 

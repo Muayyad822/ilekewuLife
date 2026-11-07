@@ -75,6 +75,8 @@ export const AuthGate: React.FC = () => {
     try {
       if (mode === 'signup') {
         const user = await signUpWithEmail(email.trim(), password, name.trim());
+        const store = useGameStore.getState();
+        store.resetGame(); // Ensure fresh new scholar state with clean ₦2,000 balance
         setAuthUser({
           uid: user.uid,
           email: user.email,

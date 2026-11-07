@@ -15,6 +15,7 @@ import {
   subscribeOnlinePeers,
   subscribeChallenges,
   subscribeMinbarPosts,
+  subscribeIncomingInteractions,
 } from '@/lib/firebase';
 import {
   BookOpen,
@@ -31,6 +32,7 @@ import {
   GraduationCap,
   Home as HomeIcon,
   User,
+  Users,
 } from 'lucide-react';
 
 const LEARNER_TIERS: Record<string, { title: string; emoji: string }> = {
@@ -66,9 +68,20 @@ export const TopLeftHud: React.FC = () => {
   const setActiveTab = useGameStore((s) => s.setActiveTab);
   const s = player.stats;
   const tier = LEARNER_TIERS[education.learnerTier ?? 'starter'] ?? LEARNER_TIERS.starter;
+  const [incomingAlert, setIncomingAlert] = useState<{
+    id: string;
+    text: string;
+    type: string;
+    gameType?: string;
+    roomId?: string;
+    fromUid?: string;
+    fromName?: string;
+  } | null>(null);
 
   // Connect Firebase Auth, Online Presence, Challenges & Minbar Feed once on mount
   useEffect(() => {
+    let unsubInteractions: (() => void) | null = null;
+
     const unsubAuth = subscribeToAuth(async (user) => {
       const store = useGameStore.getState();
       store.setAuthChecked(true);
@@ -78,6 +91,22 @@ export const TopLeftHud: React.FC = () => {
           email: user.email,
           displayName: user.displayName,
         });
+
+        // Listen for incoming real-time Salaams and Duels directed to this user
+        if (unsubInteractions) unsubInteractions();
+        unsubInteractions = subscribeIncomingInteractions(user.uid, (interaction) => {
+          setIncomingAlert({
+            id: interaction.id,
+            text: interaction.message,
+            type: interaction.type,
+            gameType: interaction.gameType,
+            roomId: interaction.roomId,
+            fromUid: interaction.fromUid,
+            fromName: interaction.fromName,
+          });
+          setTimeout(() => setIncomingAlert((cur) => (cur?.id === interaction.id ? null : cur)), 14000);
+        });
+
         const cloudData = await loadCloudState(user.uid);
         if (cloudData) {
           store.hydrateFromCloud(cloudData);
@@ -86,6 +115,10 @@ export const TopLeftHud: React.FC = () => {
         }
       } else {
         store.setAuthUser(null);
+        if (unsubInteractions) {
+          unsubInteractions();
+          unsubInteractions = null;
+        }
       }
     });
 
@@ -109,6 +142,7 @@ export const TopLeftHud: React.FC = () => {
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
       unsubAuth();
+      if (unsubInteractions) unsubInteractions();
       unsubPeers();
       unsubChallenges();
       unsubMinbar();
@@ -116,8 +150,38 @@ export const TopLeftHud: React.FC = () => {
   }, []);
 
   return (
-    <div
-      onClick={() => setActiveTab('profile')}
+    <>
+      {incomingAlert && (
+        <div className="fixed top-18 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-sm w-[92vw] animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="p-3.5 rounded-2xl bg-stone-900 border-2 border-emerald-400 text-white shadow-2xl flex items-center justify-between gap-3">
+            <div className="text-xs font-bold leading-snug flex-1">
+              {incomingAlert.text}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {incomingAlert.type === 'duel_invite' && (
+                <button
+                  onClick={() => {
+                    useGameStore.getState().acceptIncomingChallenge(incomingAlert);
+                    setIncomingAlert(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-extrabold text-xs cursor-pointer shadow-md transition"
+                >
+                  Accept & Compete!
+                </button>
+              )}
+              <button
+                onClick={() => setIncomingAlert(null)}
+                className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        onClick={() => setActiveTab('profile')}
       title="Open Scholar Profile & Real Estate"
       className="kw-glass pointer-events-auto px-2 sm:px-3 py-1.5 sm:py-2 flex flex-col gap-1 sm:gap-1.5 min-w-0 shrink-0 max-w-[42%] sm:max-w-[270px] cursor-pointer hover:border-amber-400/40 transition"
     >
@@ -148,6 +212,7 @@ export const TopLeftHud: React.FC = () => {
         <Meter icon={<Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />} value={s.energy} color="#fbbf24" label="Energy" />
       </div>
     </div>
+    </>
   );
 };
 
@@ -237,7 +302,7 @@ const DOCK: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'classroom', label: 'Classroom', icon: GraduationCap },
   { id: 'home', label: 'Home', icon: HomeIcon },
   { id: 'profile', label: 'Profile', icon: User },
-  { id: 'minbar', label: 'Minbar', icon: Radio },
+  { id: 'minbar', label: 'Circle', icon: Users },
 ];
 
 export const Dock: React.FC = () => {
@@ -309,7 +374,7 @@ const PANEL_TITLES: Record<Exclude<TabId, 'compound'>, string> = {
   classroom: 'Classroom',
   home: 'Home & Real Estate',
   profile: 'Profile',
-  minbar: 'Minbar & Online Scholars',
+  minbar: 'Circle & Online Scholars',
 };
 
 export const PanelDrawer: React.FC = () => {

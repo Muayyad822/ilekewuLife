@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
-import { RotateCcw, X } from 'lucide-react';
+import { RotateCcw, X, Users, Sparkles } from 'lucide-react';
+import { subscribeMatchRoom, syncMatchRoomMove, publishMinbarPostToCloud } from '@/lib/firebase';
 
 // ============================================================================
 // Recreation-ground games (free to play, gender-neutral, cash gifts for winning)
@@ -75,26 +76,169 @@ const TENTEN_TARGET = 5;
 
 const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const reward = useGameStore((s) => s.reward);
+  const activeMatchRoom = useGameStore((s) => s.activeMatchRoom);
+  const setActiveMatchRoom = useGameStore((s) => s.setActiveMatchRoom);
+  const authUser = useGameStore((s) => s.authUser);
+  const player = useGameStore((s) => s.player);
+
+  const myUid = authUser?.uid || player.id;
+  const isMultiplayer = Boolean(activeMatchRoom && activeMatchRoom.gameType === 'tenten');
+  const isPlayer1 = isMultiplayer ? myUid === activeMatchRoom!.player1Uid : true;
+  const opponentName = isMultiplayer
+    ? isPlayer1
+      ? activeMatchRoom!.player2Name
+      : activeMatchRoom!.player1Name
+    : 'Zainab';
+
   const [you, setYou] = useState(0);
   const [her, setHer] = useState(0);
   const [roundNo, setRoundNo] = useState(0);
   const [phase, setPhase] = useState<'pick' | 'result' | 'done'>('pick');
+  const [myPick, setMyPick] = useState<Foot | null>(null);
   const [flash, setFlash] = useState<{ mine: Foot | null; hers: Foot; text: string; good: boolean } | null>(null);
   const [history, setHistory] = useState<Foot[]>([]);
   const rewarded = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const role: 'attack' | 'defend' = roundNo % 2 === 0 ? 'attack' : 'defend';
+  const role: 'attack' | 'defend' = isMultiplayer
+    ? (isPlayer1 ? (roundNo % 2 === 0 ? 'attack' : 'defend') : (roundNo % 2 === 0 ? 'defend' : 'attack'))
+    : roundNo % 2 === 0
+    ? 'attack'
+    : 'defend';
 
   useEffect(() => {
     const pending = timers.current;
     return () => pending.forEach(clearTimeout);
   }, []);
 
+  // Subscribe to live 1v1 match room in multiplayer
+  useEffect(() => {
+    if (!isMultiplayer || !activeMatchRoom) return;
+
+    const unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
+      if (!room || !room.state) return;
+      const st = room.state;
+      const p1Score = st.you ?? 0;
+      const p2Score = st.her ?? 0;
+      const curRound = st.roundNo ?? 0;
+
+      const myScore = isPlayer1 ? p1Score : p2Score;
+      const oppScore = isPlayer1 ? p2Score : p1Score;
+
+      setYou(myScore);
+      setHer(oppScore);
+      setRoundNo(curRound);
+
+      // Check if both players picked in this round
+      if (st.p1Pick && st.p2Pick) {
+        const p1F = st.p1Pick as Foot;
+        const p2F = st.p2Pick as Foot;
+        const mine = isPlayer1 ? p1F : p2F;
+        const hers = isPlayer1 ? p2F : p1F;
+
+        const isP1Attacking = curRound % 2 === 0;
+        const attackerPick = isP1Attacking ? p1F : p2F;
+        const defenderPick = isP1Attacking ? p2F : p1F;
+        const matched = attackerPick === defenderPick;
+
+        let resText = '';
+        if (isP1Attacking) {
+          resText = matched
+            ? `${isPlayer1 ? 'You' : opponentName} matched feet! Point to ${isPlayer1 ? 'you' : opponentName}!`
+            : `${isPlayer1 ? opponentName : 'You'} dodged! Safe this round.`;
+        } else {
+          resText = matched
+            ? `${!isPlayer1 ? 'You' : opponentName} matched feet! Point to ${!isPlayer1 ? 'you' : opponentName}!`
+            : `${!isPlayer1 ? opponentName : 'You'} dodged! Safe this round.`;
+        }
+
+        const good = isPlayer1
+          ? (isP1Attacking && matched) || (!isP1Attacking && !matched)
+          : (!isP1Attacking && matched) || (isP1Attacking && !matched);
+
+        setFlash({ mine, hers, text: resText, good });
+        setPhase('result');
+        if (good) sound.playTakbeer();
+        else sound.playPasan();
+
+        // Host / Player 1 advances round after result delay
+        if (isPlayer1) {
+          timers.current.push(
+            setTimeout(() => {
+              const ny = matched ? (isP1Attacking ? p1Score + 1 : p1Score) : p1Score;
+              const nh = matched ? (!isP1Attacking ? p2Score + 1 : p2Score) : p2Score;
+
+              let winnerUid: string | undefined = undefined;
+              if (ny >= TENTEN_TARGET) winnerUid = activeMatchRoom.player1Uid;
+              else if (nh >= TENTEN_TARGET) winnerUid = activeMatchRoom.player2Uid;
+
+              syncMatchRoomMove(
+                activeMatchRoom.id,
+                {
+                  you: ny,
+                  her: nh,
+                  roundNo: curRound + 1,
+                  p1Pick: null,
+                  p2Pick: null,
+                  msg: `Round ${curRound + 2}: ${ny >= TENTEN_TARGET || nh >= TENTEN_TARGET ? 'Match Over!' : 'Pick your foot!'}`,
+                },
+                'player1',
+                winnerUid,
+              );
+            }, 1200),
+          );
+        }
+
+        setTimeout(() => {
+          setMyPick(null);
+          setPhase('pick');
+        }, 1300);
+      }
+
+      if (room.winnerUid && !rewarded.current) {
+        rewarded.current = true;
+        if (room.winnerUid === myUid) {
+          reward(
+            { naira: 1000, barakah: 5, pasanResistance: 4, energy: -4 },
+            `🏆 Won 1v1 Tinko-Tinko duel vs ${opponentName} (${myScore}-${oppScore})! Claimed ₦1,000 prize!`,
+          );
+          publishMinbarPostToCloud({
+            authorName: player.name,
+            authorStage: player.stage,
+            text: `👟🏆 Alhamdulillah! Just won a fierce 1v1 Tinko-Tinko foot duel against ${opponentName} (${myScore} vs ${oppScore}) and won the ₦1,000 prize pot! 📿`,
+            likes: 2,
+            takbeers: 5,
+            timestamp: Date.now(),
+          });
+        } else {
+          reward({ pasanResistance: 2, energy: -3 }, `Played Tinko-Tinko duel with ${opponentName} (${myScore}-${oppScore}). Sharp reflexes!`);
+        }
+        setPhase('done');
+      }
+    });
+
+    return () => unsub();
+  }, [isMultiplayer, activeMatchRoom?.id, isPlayer1, myUid, opponentName, player.name, player.stage, reward]);
+
   const resolve = useCallback(
     (mine: Foot | null) => {
+      if (isMultiplayer && activeMatchRoom) {
+        if (!mine || myPick) return;
+        setMyPick(mine);
+        sound.playWalaahTap();
+        // Update my pick in the room
+        syncMatchRoomMove(
+          activeMatchRoom.id,
+          {
+            ...activeMatchRoom.state,
+            [isPlayer1 ? 'p1Pick' : 'p2Pick']: mine,
+          },
+          isPlayer1 ? 'player2' : 'player1',
+        );
+        return;
+      }
+
       const last = history[history.length - 1];
-      // Zainab tends to repeat her previous foot — watch the pattern!
       const hers: Foot = last && Math.random() < 0.6 ? last : Math.random() < 0.5 ? 'L' : 'R';
       const match = mine !== null && mine === hers;
       let youPt = 0;
@@ -152,14 +296,14 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         );
       }
     },
-    [history, role, you, her, reward],
+    [isMultiplayer, activeMatchRoom, isPlayer1, myPick, history, role, you, her, reward],
   );
 
   useEffect(() => {
-    if (phase !== 'pick') return;
+    if (phase !== 'pick' || isMultiplayer) return;
     const t = setTimeout(() => resolve(null), 1900);
     return () => clearTimeout(t);
-  }, [phase, resolve]);
+  }, [phase, isMultiplayer, resolve]);
 
   const won = you >= TENTEN_TARGET;
 
@@ -168,13 +312,13 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       <GameHeader
         title="👯 Tinko-Tinko — Foot-Clapping Duel"
         subtitle="Clap the rhythm, then show Left or Right foot before the bar runs out!"
-        badge="Win ₦600"
+        badge={isMultiplayer ? `1v1 Match · ₦1,000 Pot` : 'Win ₦600'}
       />
 
       <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
         <span className="text-sky-300">YOU: {you}</span>
         <span className="text-amber-300">FIRST TO {TENTEN_TARGET}</span>
-        <span className="text-rose-300">ZAINAB: {her}</span>
+        <span className="text-rose-300">{opponentName.toUpperCase()}: {her}</span>
       </div>
 
       <div
@@ -183,31 +327,37 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         }`}
       >
         {role === 'attack'
-          ? '⚔️ YOUR TURN TO ATTACK — match Zainab’s foot to score!'
-          : '🛡️ DEFEND — show the OPPOSITE foot so she can’t match you!'}
+          ? `⚔️ YOUR TURN TO ATTACK — match ${opponentName}’s foot to score!`
+          : `🛡️ DEFEND — show the OPPOSITE foot so ${opponentName} can’t match you!`}
       </div>
 
-      <div className="flex items-center justify-center gap-1.5 text-[11px] text-stone-500 font-semibold">
-        Zainab&apos;s recent feet:
-        {history.length === 0 && <span>—</span>}
-        {history.map((f, i) => (
-          <span key={i} className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 font-mono font-bold">
-            {f === 'L' ? 'Left' : 'Right'}
-          </span>
-        ))}
-      </div>
+      {!isMultiplayer && (
+        <div className="flex items-center justify-center gap-1.5 text-[11px] text-stone-500 font-semibold">
+          Zainab&apos;s recent feet:
+          {history.length === 0 && <span>—</span>}
+          {history.map((f, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 font-mono font-bold">
+              {f === 'L' ? 'Left' : 'Right'}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
-        {phase === 'pick' && (
+        {phase === 'pick' && !isMultiplayer && (
           <div key={roundNo} className="h-full bg-amber-500" style={{ animation: 'kw-shrink 1.9s linear forwards' }} />
         )}
       </div>
 
       <div className="min-h-[44px] text-center text-sm font-extrabold">
-        {phase === 'pick' && <span className="text-stone-800">🎵 Tin-ko! Tin-ko! Pick your foot…</span>}
+        {phase === 'pick' && (
+          <span className="text-stone-800">
+            {myPick ? `✓ Picked ${myPick === 'L' ? 'Left' : 'Right'}! Waiting for ${opponentName}...` : '🎵 Tin-ko! Tin-ko! Pick your foot…'}
+          </span>
+        )}
         {phase === 'result' && flash && (
           <span className={flash.good ? 'text-emerald-700' : 'text-rose-700'}>
-            You: {flash.mine ? (flash.mine === 'L' ? 'Left' : 'Right') : '—'} · Zainab: {flash.hers === 'L' ? 'Left' : 'Right'} — {flash.text}
+            You: {flash.mine ? (flash.mine === 'L' ? 'Left' : 'Right') : '—'} · {opponentName}: {flash.hers === 'L' ? 'Left' : 'Right'} — {flash.text}
           </span>
         )}
       </div>
@@ -216,9 +366,13 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         {(['L', 'R'] as Foot[]).map((f) => (
           <button
             key={f}
-            disabled={phase !== 'pick'}
+            disabled={phase !== 'pick' || Boolean(myPick)}
             onClick={() => resolve(f)}
-            className="py-5 rounded-2xl border-2 border-sky-500 bg-sky-50 hover:bg-sky-100 disabled:opacity-50 font-extrabold text-stone-900 cursor-pointer text-sm"
+            className={`py-5 rounded-2xl border-2 font-extrabold text-stone-900 cursor-pointer text-sm transition ${
+              myPick === f
+                ? 'border-emerald-500 bg-emerald-100 ring-4 ring-emerald-300'
+                : 'border-sky-500 bg-sky-50 hover:bg-sky-100 disabled:opacity-50'
+            }`}
           >
             <div className="text-3xl mb-1">{f === 'L' ? '🦶' : '🦶'}</div>
             {f === 'L' ? 'Left Foot' : 'Right Foot'}
@@ -229,10 +383,22 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       {phase === 'done' && (
         <ResultCard
           emoji={won ? '🏆' : '😅'}
-          title={won ? `Masha'Allah! You won ${you}–${her}!` : `Zainab won ${her}–${you}!`}
-          message={won ? 'You earned ₦600, Barakah and sharper reflexes!' : 'Good exercise! Agility still improved (+1).'}
-          onAgain={onAgain}
-          onClose={onClose}
+          title={won ? `Masha'Allah! You won ${you}–${her}!` : `${opponentName} won ${her}–${you}!`}
+          message={
+            won
+              ? isMultiplayer
+                ? 'You claimed the ₦1,000 prize pot and sharper reflexes!'
+                : 'You earned ₦600, Barakah and sharper reflexes!'
+              : 'Good exercise! Agility still improved (+1).'
+          }
+          onAgain={() => {
+            if (isMultiplayer) setActiveMatchRoom(null);
+            onAgain();
+          }}
+          onClose={() => {
+            if (isMultiplayer) setActiveMatchRoom(null);
+            onClose();
+          }}
         />
       )}
     </div>
@@ -518,16 +684,86 @@ const applyAyoMove = (g: AyoState, pit: number): AyoState => {
 
 const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const reward = useGameStore((s) => s.reward);
+  const activeMatchRoom = useGameStore((s) => s.activeMatchRoom);
+  const setActiveMatchRoom = useGameStore((s) => s.setActiveMatchRoom);
+  const authUser = useGameStore((s) => s.authUser);
+  const player = useGameStore((s) => s.player);
+
+  const myUid = authUser?.uid || player.id;
+  const isMultiplayer = Boolean(activeMatchRoom && activeMatchRoom.gameType === 'ayo');
+  const isPlayer1 = isMultiplayer ? myUid === activeMatchRoom!.player1Uid : true;
+  const opponentName = isMultiplayer
+    ? isPlayer1
+      ? activeMatchRoom!.player2Name
+      : activeMatchRoom!.player1Name
+    : 'Baba Ayo';
+
   const [g, setG] = useState<AyoState>({
     board: Array(PITS).fill(4),
     you: 0,
     ai: 0,
-    turn: 'you',
+    turn: isMultiplayer ? (isPlayer1 ? 'you' : 'ai') : 'you',
     moves: 0,
-    msg: 'Tap one of your pits (bottom row) to sow seeds to the right.',
+    msg: isMultiplayer
+      ? isPlayer1
+        ? 'Your move! Tap one of your pits (bottom row) to sow seeds.'
+        : `Waiting for ${opponentName} to make the first move...`
+      : 'Tap one of your pits (bottom row) to sow seeds to the right.',
     over: null,
   });
   const rewarded = useRef(false);
+
+  // Sync with Firestore match room in live 1v1 multiplayer
+  useEffect(() => {
+    if (!isMultiplayer || !activeMatchRoom) return;
+
+    const unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
+      if (!room || !room.state) return;
+      const st = room.state;
+      const p1Seeds = st.p1Seeds ?? 0;
+      const p2Seeds = st.p2Seeds ?? 0;
+      const isMyTurn = isPlayer1 ? room.turn === 'player1' : room.turn === 'player2';
+      const myScore = isPlayer1 ? p1Seeds : p2Seeds;
+      const oppScore = isPlayer1 ? p2Seeds : p1Seeds;
+
+      let over: AyoState['over'] = null;
+      if (room.winnerUid) {
+        over = room.winnerUid === myUid ? 'you' : 'ai';
+      }
+
+      setG({
+        board: st.board || Array(PITS).fill(4),
+        you: myScore,
+        ai: oppScore,
+        turn: isMyTurn ? 'you' : 'ai',
+        moves: st.moves ?? 0,
+        msg: st.msg || (isMyTurn ? 'Your turn to move!' : `Waiting for ${opponentName}...`),
+        over,
+      });
+
+      if (room.winnerUid && !rewarded.current) {
+        rewarded.current = true;
+        if (room.winnerUid === myUid) {
+          reward(
+            { naira: 1000, ilm: 4, barakah: 6, energy: -3 },
+            `🏆 Won 1v1 Ayo Olopon match against ${opponentName} (${myScore}-${oppScore})! Claimed ₦1,000 prize pot!`,
+          );
+          publishMinbarPostToCloud({
+            authorName: player.name,
+            authorStage: player.stage,
+            text: `🪵🏆 Alhamdulillah! Just defeated ${opponentName} in a live 1v1 Ayo Olopon duel (${myScore} vs ${oppScore}) and won the ₦1,000 prize pot! ✨`,
+            likes: 3,
+            takbeers: 6,
+            timestamp: Date.now(),
+          });
+        } else {
+          reward({ ilm: 1, energy: -3 }, `Played 1v1 Ayo Olopon with ${opponentName} (${myScore}-${oppScore}). Keep practicing!`);
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [isMultiplayer, activeMatchRoom?.id, isPlayer1, myUid, opponentName, player.name, player.stage, reward]);
 
   const commit = useCallback(
     (ng: AyoState) => {
@@ -547,8 +783,9 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     [reward],
   );
 
+  // Solo mode AI move (Baba Ayo)
   useEffect(() => {
-    if (g.turn !== 'ai' || g.over) return;
+    if (isMultiplayer || g.turn !== 'ai' || g.over) return;
     const t = setTimeout(() => {
       const options = legalPits(g.board, 'ai');
       let best = options[0];
@@ -563,26 +800,63 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       commit(applyAyoMove(g, best));
     }, 850);
     return () => clearTimeout(t);
-  }, [g, commit]);
+  }, [isMultiplayer, g, commit]);
 
   const play = (pit: number) => {
-    if (g.turn !== 'you' || g.over || g.board[pit] === 0 || sideOf(pit) !== 'you') return;
-    sound.playWalaahTap();
-    commit(applyAyoMove(g, pit));
+    if (g.over || g.board[pit] === 0) return;
+
+    if (isMultiplayer && activeMatchRoom) {
+      if (g.turn !== 'you') return;
+      // Player 1 controls pits 0..5 (bottom row). Player 2 controls pits 6..11 (top row).
+      const validSide = isPlayer1 ? sideOf(pit) === 'you' : sideOf(pit) === 'ai';
+      if (!validSide) return;
+
+      sound.playWalaahTap();
+      const moverSide = sideOf(pit);
+      const { board, captured } = sow(g.board, pit);
+      const myNext = g.you + captured;
+      const oppNext = g.ai;
+      const p1Seeds = isPlayer1 ? myNext : oppNext;
+      const p2Seeds = isPlayer1 ? oppNext : myNext;
+      const nextTurn = isPlayer1 ? 'player2' : 'player1';
+
+      let winnerUid: string | undefined = undefined;
+      if (p1Seeds >= AYO_TARGET) winnerUid = activeMatchRoom.player1Uid;
+      else if (p2Seeds >= AYO_TARGET) winnerUid = activeMatchRoom.player2Uid;
+
+      const moveMsg = captured > 0 ? `${player.name} captured ${captured} seeds!` : `${player.name} played pit ${pit + 1}.`;
+
+      syncMatchRoomMove(
+        activeMatchRoom.id,
+        {
+          board,
+          p1Seeds,
+          p2Seeds,
+          moves: g.moves + 1,
+          msg: moveMsg,
+        },
+        nextTurn,
+        winnerUid,
+      );
+    } else {
+      if (g.turn !== 'you' || sideOf(pit) !== 'you') return;
+      sound.playWalaahTap();
+      commit(applyAyoMove(g, pit));
+    }
   };
 
   const topRow = [11, 10, 9, 8, 7, 6];
   const bottomRow = [0, 1, 2, 3, 4, 5];
 
   const Pit: React.FC<{ i: number }> = ({ i }) => {
-    const mine = sideOf(i) === 'you';
-    const playable = mine && g.turn === 'you' && !g.over && g.board[i] > 0;
+    const isMyPit = isMultiplayer ? (isPlayer1 ? sideOf(i) === 'you' : sideOf(i) === 'ai') : sideOf(i) === 'you';
+    const playable = isMyPit && g.turn === 'you' && !g.over && g.board[i] > 0;
     return (
       <button
         disabled={!playable}
         onClick={() => play(i)}
         className={`aspect-square rounded-full border-4 flex flex-col items-center justify-center font-extrabold text-sm ${
-          mine ? 'bg-amber-200 border-amber-800 text-amber-950' : 'bg-stone-300 border-stone-700 text-stone-900'
+          isMyPit ? 'bg-amber-200 border-amber-800 text-amber-950' : 'bg-stone-300 border-stone-700 text-stone-900'
         } ${playable ? 'cursor-pointer hover:brightness-110 kw-pulse' : 'cursor-default'}`}
       >
         <span>{g.board[i]}</span>
@@ -596,13 +870,13 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       <GameHeader
         title="🪵 Ayo Olopon — Yoruba Mancala"
         subtitle={`Sow seeds anticlockwise. Land in a pit that makes 2 or 3 seeds to capture it. First to ${AYO_TARGET} wins.`}
-        badge="Win ₦800"
+        badge={isMultiplayer ? `1v1 Match · ₦1,000 Pot` : 'Win ₦800'}
       />
 
       <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
-        <span className="text-amber-300">YOU: {g.you}</span>
-        <span className="text-stone-300">{g.turn === 'you' ? 'Your move' : 'Baba Ayo is thinking…'}</span>
-        <span className="text-stone-200">BABA AYO: {g.ai}</span>
+        <span className="text-amber-300">{player.name} (YOU): {g.you}</span>
+        <span className="text-stone-300">{g.turn === 'you' ? 'Your move' : `${opponentName} is thinking…`}</span>
+        <span className="text-stone-200">{opponentName.toUpperCase()}: {g.ai}</span>
       </div>
 
       <div className="rounded-2xl bg-amber-900 p-2 sm:p-3 space-y-1.5 sm:space-y-2 shadow-inner">
@@ -610,15 +884,40 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         <div className="grid grid-cols-6 gap-1.5 sm:gap-2">{bottomRow.map((i) => <Pit key={i} i={i} />)}</div>
       </div>
 
-      <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{g.msg}</div>
+      <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center justify-between">
+        <span>{g.msg}</span>
+        {isMultiplayer && (
+          <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> Live 1v1 Room
+          </span>
+        )}
+      </div>
 
       {g.over && (
         <ResultCard
           emoji={g.over === 'you' ? '🏆' : g.over === 'draw' ? '🤝' : '🧓'}
-          title={g.over === 'you' ? `You beat Baba Ayo ${g.you}–${g.ai}!` : g.over === 'draw' ? 'A fair draw!' : `Baba Ayo wins ${g.ai}–${g.you}`}
-          message={g.over === 'you' ? 'You earned ₦800, Ilm and Barakah!' : 'Wisdom comes with practice (+1 Ilm). Try again!'}
-          onAgain={onAgain}
-          onClose={onClose}
+          title={
+            g.over === 'you'
+              ? `You beat ${opponentName} ${g.you}–${g.ai}!`
+              : g.over === 'draw'
+              ? 'A fair draw!'
+              : `${opponentName} wins ${g.ai}–${g.you}`
+          }
+          message={
+            g.over === 'you'
+              ? isMultiplayer
+                ? 'You claimed the ₦1,000 prize pot, Ilm and Barakah!'
+                : 'You earned ₦800, Ilm and Barakah!'
+              : 'Wisdom comes with practice (+1 Ilm). Try again!'
+          }
+          onAgain={() => {
+            if (isMultiplayer) setActiveMatchRoom(null);
+            onAgain();
+          }}
+          onClose={() => {
+            if (isMultiplayer) setActiveMatchRoom(null);
+            onClose();
+          }}
         />
       )}
     </div>

@@ -7,6 +7,7 @@ import {
   GameEvent,
   EventChoice,
   MinbarPost,
+  MinbarComment,
   Loc,
   ActivityId,
   Outfit,
@@ -21,6 +22,7 @@ import {
   MountVehicle,
   FurnitureTransform,
   LearnerTier,
+  MultiplayerMatchRoom,
 } from '@/types/game';
 import { GAME_EVENTS } from '@/data/events';
 import {
@@ -42,8 +44,15 @@ import {
   saveCloudState,
   CloudSavePayload,
   publishMinbarPostToCloud,
+  updateMinbarPostInCloud,
+  deleteMinbarPostFromCloud,
+  incrementMinbarReaction,
+  addCommentToMinbarPost,
   sendGameChallengeToCloud,
+  updateGameChallengeInCloud,
+  sendPeerInteractionToCloud,
   updatePresenceStatus,
+  createOrJoinMatchRoom,
 } from '@/lib/firebase';
 
 export type TabId = 'compound' | 'classroom' | 'home' | 'profile' | 'minbar';
@@ -92,6 +101,7 @@ interface GameState {
   onlinePeers: OnlinePeer[];
   challenges: GameChallenge[];
   greetedPeerIds: string[];
+  activeMatchRoom: MultiplayerMatchRoom | null;
 
   // Interactive systems
   owned: string[];
@@ -160,6 +170,16 @@ interface GameState {
     gameType: GameChallenge['gameType'],
     wager: number,
   ) => { ok: boolean; msg: string };
+  setActiveMatchRoom: (room: MultiplayerMatchRoom | null) => void;
+  acceptIncomingChallenge: (alert: {
+    id: string;
+    type: string;
+    gameType?: string;
+    roomId?: string;
+    fromUid?: string;
+    fromName?: string;
+  }) => void;
+  submitDuelResult: (challengeId: string, score: number) => void;
   startRide: (to: Loc) => { ok: boolean; msg: string };
   updateRide: (progress: number) => void;
   finishRide: () => void;
@@ -169,7 +189,11 @@ interface GameState {
   performSunnahWudu: () => void;
   triggerRally: (prayerName: string) => void;
   quizAnswerSuccess: (points: number) => void;
-  addMinbarPost: (text: string, authorName?: string) => void;
+  addMinbarPost: (text: string, audioUrl?: string, authorName?: string) => void;
+  editMinbarPost: (postId: string, text: string) => void;
+  deleteMinbarPost: (postId: string) => void;
+  reactToMinbarPost: (postId: string, reaction: 'takbeer' | 'like') => void;
+  commentOnMinbarPost: (postId: string, text: string) => void;
   getBusFare: (to: Loc) => number;
   resetGame: () => void;
 }
@@ -247,86 +271,7 @@ const INITIAL_PLAYER: PlayerProfile = {
   madrasahName: 'MAHD IQRA, Ejigbo, Lagos',
 };
 
-const INITIAL_MINBAR_POSTS: MinbarPost[] = [
-  {
-    id: '1',
-    authorName: 'Ustadh Luqman',
-    authorStage: 'sheikh_agba',
-    text: 'Welcome to the Daily Classroom! Every student in Ruwaq should complete today’s Topic of the Day before Asr prayer. May Allah grant you beneficial Ilm! 🤲',
-    likes: 124,
-    takbeers: 340,
-    timestamp: Date.now() - 3600000 * 2,
-  },
-  {
-    id: '2',
-    authorName: 'Brother Faruq (Agege)',
-    authorStage: 'markaziy',
-    text: 'Alhamdulillah! Just saved enough from Isolo Home Lessons to move from the Ruwaq into my own off-campus room in Ejigbo! 🚪🔑',
-    likes: 88,
-    takbeers: 145,
-    timestamp: Date.now() - 3600000 * 5,
-  },
-  {
-    id: '3',
-    authorName: 'Sister Maryam (Ikorodu)',
-    authorStage: 'arowo_kewu',
-    text: 'Just scored 3/3 on today’s Tajweed classroom test and kept my 7-day learning streak alive! Who wants a friendly Musabaqah duel? 🧕🏆',
-    likes: 210,
-    takbeers: 512,
-    timestamp: Date.now() - 3600000 * 12,
-  },
-];
-
-export const CAMPUS_ONLINE_SCHOLARS: OnlinePeer[] = [
-  {
-    uid: 'campus_bilal',
-    name: 'Bilal Al-Ilori',
-    stage: 'arowo_kewu',
-    madrasahName: 'Darul Uloom, Ilorin',
-    ilm: 54,
-    hifzJuz: 8,
-    housingTier: 'shared_room',
-    currentTab: 'classroom',
-    lastSeen: Date.now() - 35000,
-    isLive: true,
-  },
-  {
-    uid: 'campus_zainab',
-    name: 'Zainab Bint Yusuf',
-    stage: 'markaziy',
-    madrasahName: 'Markaz Ta’leem, Agege',
-    ilm: 76,
-    hifzJuz: 19,
-    housingTier: 'mini_flat',
-    currentTab: 'classroom',
-    lastSeen: Date.now() - 18000,
-    isLive: true,
-  },
-  {
-    uid: 'campus_moruf',
-    name: 'Moruf Olanrewaju',
-    stage: 'omo_kewu',
-    madrasahName: 'MAHD IQRA, Ejigbo',
-    ilm: 28,
-    hifzJuz: 3,
-    housingTier: 'ruwaq',
-    currentTab: 'compound',
-    lastSeen: Date.now() - 50000,
-    isLive: true,
-  },
-  {
-    uid: 'campus_qasim',
-    name: 'Sheikh Qasim Ibadan',
-    stage: 'sheikh_agba',
-    madrasahName: 'Adabiyyah College, Ibadan',
-    ilm: 92,
-    hifzJuz: 30,
-    housingTier: 'personal_villa',
-    currentTab: 'minbar',
-    lastSeen: Date.now() - 90000,
-    isLive: true,
-  },
-];
+const INITIAL_MINBAR_POSTS: MinbarPost[] = [];
 
 const clamp = (v: number) => Math.min(100, Math.max(0, v));
 
@@ -361,6 +306,7 @@ export const useGameStore = create<GameState>()(
       onlinePeers: [],
       challenges: [],
       greetedPeerIds: [],
+      activeMatchRoom: null,
 
       setAuthChecked: (authChecked) => set({ authChecked }),
       setIsGuest: (isGuest) => set({ isGuest }),
@@ -458,9 +404,7 @@ export const useGameStore = create<GameState>()(
   },
 
   setChallenges: (challenges) => set({ challenges }),
-  setMinbarPosts: (posts) => {
-    if (posts.length > 0) set({ minbarPosts: posts });
-  },
+  setMinbarPosts: (posts) => set({ minbarPosts: posts }),
 
   hydrateFromCloud: (payload) => {
     set({
@@ -1134,11 +1078,22 @@ export const useGameStore = create<GameState>()(
   },
 
   sendSalaamToPeer: (peer) => {
-    const { greetedPeerIds, player } = get();
+    const { greetedPeerIds, player, authUser } = get();
     if (greetedPeerIds.includes(peer.uid)) {
       return { ok: false, msg: `You already exchanged Salaam with ${peer.name} recently!` };
     }
     sound.playTakbeer();
+
+    // Broadcast live salaam interaction to Firestore for the recipient
+    sendPeerInteractionToCloud({
+      fromUid: authUser?.uid || player.id,
+      fromName: player.name,
+      toUid: peer.uid,
+      type: 'salaam',
+      message: `Assalamu Alaykum! ${player.name} sent you a warm greeting and Dua of Barakah! 🤲`,
+      createdAt: Date.now(),
+    });
+
     set({
       greetedPeerIds: [...greetedPeerIds, peer.uid],
       player: {
@@ -1156,17 +1111,90 @@ export const useGameStore = create<GameState>()(
     });
     return {
       ok: true,
-      msg: `Wa alaykumus-salam! ${peer.name} returned your greeting with a warm Dua (+3 Taqwa, +4 Barakah)!`,
+      msg: `Wa alaykumus-salam! ${peer.name} received your greeting with a warm Dua (+3 Taqwa, +4 Barakah)!`,
     };
+  },
+
+  setActiveMatchRoom: (activeMatchRoom) => set({ activeMatchRoom }),
+
+  acceptIncomingChallenge: (alert) => {
+    const { player, authUser } = get();
+    const myUid = authUser?.uid || player.id;
+    if (alert.roomId) {
+      const room: MultiplayerMatchRoom = {
+        id: alert.roomId,
+        gameType: (alert.gameType as any) || 'ayo',
+        player1Uid: alert.fromUid || 'opponent',
+        player1Name: alert.fromName || 'Classmate',
+        player2Uid: myUid,
+        player2Name: player.name,
+        turn: 'player1',
+        state: {},
+        wager: 1000,
+        status: 'active',
+        lastMoveAt: Date.now(),
+      };
+      set({ activeMatchRoom: room });
+    }
+    if (alert.gameType === 'ayo') {
+      set({ activity: 'ayo', activeTab: 'compound' });
+    } else if (alert.gameType === 'tenten') {
+      set({ activity: 'tenten', activeTab: 'compound' });
+    } else if (alert.gameType === 'football') {
+      set({ activity: 'football', activeTab: 'compound' });
+    } else {
+      set({ activeTab: 'classroom' });
+    }
   },
 
   organizeGameWithPeer: (peer, gameType, wager) => {
     const { player, authUser, challenges } = get();
-    if (player.stats.naira < wager) {
+    const matchWager = wager || 1000;
+    if (player.stats.naira < matchWager) {
       sound.playPasan();
-      return { ok: false, msg: `You need at least ₦${wager.toLocaleString()} to put up this match prize.` };
+      return { ok: false, msg: `You need at least ₦${matchWager.toLocaleString()} to put up this match prize.` };
     }
     sound.playCoin();
+
+    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+
+    const initialAyoState = {
+      board: Array(12).fill(4),
+      you: 0,
+      ai: 0,
+      turn: 'player1',
+      moves: 0,
+      msg: `Match started! ${player.name} goes first.`,
+      over: null,
+    };
+
+    const initialTenTenState = {
+      you: 0,
+      her: 0,
+      roundNo: 0,
+      p1Pick: null,
+      p2Pick: null,
+      history: [],
+      msg: `Match started! First to 5 points wins.`,
+      over: null,
+    };
+
+    const matchRoom: MultiplayerMatchRoom = {
+      id: roomId,
+      gameType,
+      player1Uid: authUser?.uid || player.id,
+      player1Name: player.name,
+      player2Uid: peer.uid,
+      player2Name: peer.name,
+      turn: 'player1',
+      state: gameType === 'ayo' ? initialAyoState : initialTenTenState,
+      wager: matchWager,
+      status: 'active',
+      lastMoveAt: Date.now(),
+    };
+
+    createOrJoinMatchRoom(matchRoom);
+    set({ activeMatchRoom: matchRoom });
 
     const newChallenge: Omit<GameChallenge, 'id'> = {
       fromUid: authUser?.uid || player.id,
@@ -1174,12 +1202,24 @@ export const useGameStore = create<GameState>()(
       toUid: peer.uid,
       toName: peer.name,
       gameType,
-      wager,
+      wager: matchWager,
       status: 'accepted',
       createdAt: Date.now(),
     };
 
     sendGameChallengeToCloud(newChallenge);
+    sendPeerInteractionToCloud({
+      fromUid: authUser?.uid || player.id,
+      fromName: player.name,
+      toUid: peer.uid,
+      type: 'duel_invite',
+      gameType,
+      roomId,
+      wager: matchWager,
+      message: `⚔️ ${player.name} challenged you to a ${gameType.replace('_', ' ')} (Prize: ₦${matchWager.toLocaleString()})!`,
+      createdAt: Date.now(),
+    });
+
     const localChallenge: GameChallenge = {
       ...newChallenge,
       id: 'match_' + Date.now(),
@@ -1201,6 +1241,74 @@ export const useGameStore = create<GameState>()(
       ok: true,
       msg: `Match organized against ${peer.name}! Entering ${gameType.replace('_', ' ')} arena...`,
     };
+  },
+
+  submitDuelResult: (challengeId, score) => {
+    const { player, authUser, challenges } = get();
+    const myUid = authUser?.uid || player.id;
+    const challenge = challenges.find((c) => c.id === challengeId);
+    if (!challenge) return;
+
+    const isChallenger = challenge.fromUid === myUid;
+    const updates: Partial<GameChallenge> = isChallenger
+      ? { fromScore: score }
+      : { toScore: score };
+
+    const opponentScore = isChallenger ? challenge.toScore : challenge.fromScore;
+
+    if (opponentScore !== undefined) {
+      // Both completed their tests! Determine winner
+      const iWon = score > opponentScore;
+      const tie = score === opponentScore;
+      const winnerUid = tie ? undefined : iWon ? myUid : (isChallenger ? challenge.toUid : challenge.fromUid);
+
+      updates.status = 'completed';
+      updates.winnerUid = winnerUid;
+
+      const payout = 1000; // Payout set to ₦1,000 as configured
+
+      if (iWon) {
+        sound.playCoin();
+        const nextNaira = player.stats.naira + payout;
+        set({
+          player: {
+            ...player,
+            stats: {
+              ...player.stats,
+              naira: nextNaira,
+              ilm: clamp(player.stats.ilm + 10),
+              barakah: clamp(player.stats.barakah + 8),
+            },
+            logHistory: [
+              `🏆 Won Classroom Duel against ${isChallenger ? challenge.toName : challenge.fromName}! Scored ${score} vs ${opponentScore}. Claimed ₦${payout.toLocaleString()} prize pot!`,
+              ...player.logHistory.slice(0, 24),
+            ],
+          },
+        });
+        publishMinbarPostToCloud({
+          authorName: player.name,
+          authorStage: player.stage,
+          text: `🏆 Alhamdulillah! Just won a fierce classroom speed-duel against ${isChallenger ? challenge.toName : challenge.fromName} (${score} vs ${opponentScore}) and claimed the ₦${payout.toLocaleString()} prize pot! 📿✨`,
+          likes: 2,
+          takbeers: 5,
+          timestamp: Date.now(),
+        });
+      } else if (!tie) {
+        sound.playPasan();
+        set({
+          player: {
+            ...player,
+            logHistory: [
+              `Lost Classroom Duel against ${isChallenger ? challenge.toName : challenge.fromName} (${score} vs ${opponentScore}). Keep studying!`,
+              ...player.logHistory.slice(0, 24),
+            ],
+          },
+        });
+      }
+    }
+
+    updateGameChallengeInCloud(challengeId, updates);
+    triggerAutoSave();
   },
 
   quizAnswerSuccess: (points: number) => {
@@ -1226,17 +1334,19 @@ export const useGameStore = create<GameState>()(
     setTimeout(() => get().syncToCloud(), 200);
   },
 
-  addMinbarPost: (text: string, authorName?: string) => {
+  addMinbarPost: (text: string, audioUrl?: string, authorName?: string) => {
     const { minbarPosts, player, authUser } = get();
     const newPost: MinbarPost = {
-      id: Date.now().toString(),
+      id: 'post_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       authorId: authUser?.uid || player.id,
       authorName: authorName || player.name,
       authorStage: player.stage,
       text,
+      audioUrl,
       likes: 1,
       takbeers: 1,
       timestamp: Date.now(),
+      comments: [],
     };
     sound.playTakbeer();
     set({ minbarPosts: [newPost, ...minbarPosts] });
@@ -1245,10 +1355,69 @@ export const useGameStore = create<GameState>()(
       authorName: newPost.authorName,
       authorStage: newPost.authorStage,
       text: newPost.text,
+      audioUrl: newPost.audioUrl,
       likes: 1,
       takbeers: 1,
       timestamp: newPost.timestamp,
+      comments: [],
     });
+  },
+
+  editMinbarPost: (postId: string, text: string) => {
+    const { minbarPosts } = get();
+    const updated = minbarPosts.map((p) => (p.id === postId ? { ...p, text } : p));
+    set({ minbarPosts: updated });
+    updateMinbarPostInCloud(postId, { text });
+  },
+
+  deleteMinbarPost: (postId: string) => {
+    const { minbarPosts } = get();
+    const updated = minbarPosts.filter((p) => p.id !== postId);
+    set({ minbarPosts: updated });
+    deleteMinbarPostFromCloud(postId);
+  },
+
+  reactToMinbarPost: (postId: string, reaction: 'takbeer' | 'like') => {
+    const { minbarPosts } = get();
+    if (reaction === 'takbeer') sound.playTakbeer();
+    else sound.playCoin();
+
+    const updated = minbarPosts.map((p) => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          takbeers: reaction === 'takbeer' ? p.takbeers + 1 : p.takbeers,
+          likes: reaction === 'like' ? p.likes + 1 : p.likes,
+        };
+      }
+      return p;
+    });
+    set({ minbarPosts: updated });
+    incrementMinbarReaction(postId, reaction === 'takbeer' ? 'takbeers' : 'likes');
+  },
+
+  commentOnMinbarPost: (postId: string, text: string) => {
+    const { minbarPosts, player, authUser } = get();
+    sound.playWalaahTap();
+    const comment: MinbarComment = {
+      id: 'cmt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      authorId: authUser?.uid || player.id,
+      authorName: player.name,
+      authorStage: player.stage,
+      text,
+      timestamp: Date.now(),
+    };
+    const updated = minbarPosts.map((p) => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          comments: [...(p.comments || []), comment],
+        };
+      }
+      return p;
+    });
+    set({ minbarPosts: updated });
+    addCommentToMinbarPost(postId, comment);
   },
 
   resetGame: () => {
@@ -1256,6 +1425,7 @@ export const useGameStore = create<GameState>()(
       player: {
         ...INITIAL_PLAYER,
         id: 'scholar_' + Math.random().toString(36).substring(2, 9),
+        stats: { ...INITIAL_STATS, naira: 2000 },
       },
       housing: { ...INITIAL_HOUSING },
       education: { ...INITIAL_EDUCATION },

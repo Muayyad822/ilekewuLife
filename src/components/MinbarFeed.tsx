@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { GameChallenge, OnlinePeer } from '@/types/game';
 import { Leaderboard } from '@/components/Leaderboard';
+import { uploadAudioFree } from '@/lib/firebase';
 import {
   Mic,
   Radio,
@@ -15,20 +16,40 @@ import {
   Swords,
   Trophy,
   Gamepad2,
+  Edit2,
+  Trash2,
+  MessageSquare,
+  Check,
+  X,
+  Volume2,
 } from 'lucide-react';
 import { sound } from '@/lib/audio';
 
 export const MinbarFeed: React.FC = () => {
   const minbarPosts = useGameStore((s) => s.minbarPosts);
   const addMinbarPost = useGameStore((s) => s.addMinbarPost);
+  const editMinbarPost = useGameStore((s) => s.editMinbarPost);
+  const deleteMinbarPost = useGameStore((s) => s.deleteMinbarPost);
+  const reactToMinbarPost = useGameStore((s) => s.reactToMinbarPost);
+  const commentOnMinbarPost = useGameStore((s) => s.commentOnMinbarPost);
+  const player = useGameStore((s) => s.player);
+  const authUser = useGameStore((s) => s.authUser);
   const onlinePeers = useGameStore((s) => s.onlinePeers);
   const challenges = useGameStore((s) => s.challenges);
   const sendSalaamToPeer = useGameStore((s) => s.sendSalaamToPeer);
   const organizeGameWithPeer = useGameStore((s) => s.organizeGameWithPeer);
 
+  const myUid = authUser?.uid || player.id;
+
   const [tab, setTab] = useState<'online' | 'radio' | 'ranks'>('online');
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
   const [selectedPeer, setSelectedPeer] = useState<OnlinePeer | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -39,13 +60,48 @@ export const MinbarFeed: React.FC = () => {
     setInputText('');
   };
 
-  const handleSimulatedVoiceRecord = () => {
-    setIsRecording(true);
-    sound.playWalaahTap();
-    setTimeout(() => {
+  const handleToggleVoiceRecord = async () => {
+    if (isRecording) {
+      // Stop recording and upload
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
       setIsRecording(false);
-      addMinbarPost('🎙️ [Voice Recitation] Surah Al-Ikhlas recited with Tajweed during Tahajjud prayer.');
-    }, 2500);
+    } else {
+      // Start recording
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setToast('Microphone access is not supported in this browser.');
+          return;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunksRef.current = [];
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          setToast('Uploading voice note to Minbar...');
+          const url = await uploadAudioFree(audioBlob);
+          addMinbarPost('🎙️ [Voice Broadcast]', url);
+          setToast('✓ Voice broadcast shared with online scholars!');
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        sound.playWalaahTap();
+      } catch (err) {
+        console.warn('Microphone error:', err);
+        setToast('Microphone permission denied or unavailable.');
+      }
+    }
   };
 
   const startPeerGame = (peer: OnlinePeer, gameType: GameChallenge['gameType'], wager: number) => {
@@ -140,32 +196,32 @@ export const MinbarFeed: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
-                  onClick={() => startPeerGame(selectedPeer, 'quiz_duel', 200)}
+                  onClick={() => startPeerGame(selectedPeer, 'quiz_duel', 1000)}
                   className="p-3 rounded-xl border border-emerald-400 bg-white hover:bg-emerald-50 text-left cursor-pointer"
                 >
                   <div className="font-extrabold text-xs text-stone-900">📖 Classroom Musabaqah Duel</div>
-                  <div className="text-[11px] text-stone-500">Test today&apos;s subject knowledge head-to-head</div>
+                  <div className="text-[11px] text-stone-500">Test today&apos;s subject knowledge (Prize: ₦1,000)</div>
                 </button>
                 <button
-                  onClick={() => startPeerGame(selectedPeer, 'football', 300)}
+                  onClick={() => startPeerGame(selectedPeer, 'football', 1000)}
                   className="p-3 rounded-xl border border-sky-400 bg-white hover:bg-sky-50 text-left cursor-pointer"
                 >
                   <div className="font-extrabold text-xs text-stone-900">⚽ Kewu F.C. Table Soccer</div>
-                  <div className="text-[11px] text-stone-500">First to 3 goals on the compound pitch</div>
+                  <div className="text-[11px] text-stone-500">First to 3 goals on the compound pitch (Prize: ₦1,000)</div>
                 </button>
                 <button
-                  onClick={() => startPeerGame(selectedPeer, 'ayo', 250)}
+                  onClick={() => startPeerGame(selectedPeer, 'ayo', 1000)}
                   className="p-3 rounded-xl border border-amber-400 bg-white hover:bg-amber-50 text-left cursor-pointer"
                 >
                   <div className="font-extrabold text-xs text-stone-900">🪵 Ayo Olopon (Yoruba Mancala)</div>
-                  <div className="text-[11px] text-stone-500">Capture the most seeds on the carved board</div>
+                  <div className="text-[11px] text-stone-500">Capture seeds on the carved board (Prize: ₦1,000)</div>
                 </button>
                 <button
-                  onClick={() => startPeerGame(selectedPeer, 'tenten', 200)}
+                  onClick={() => startPeerGame(selectedPeer, 'tenten', 1000)}
                   className="p-3 rounded-xl border border-rose-400 bg-white hover:bg-rose-50 text-left cursor-pointer"
                 >
                   <div className="font-extrabold text-xs text-stone-900">👟 Tinko-Tinko Foot Duel</div>
-                  <div className="text-[11px] text-stone-500">Rhythm &amp; reflex playground match</div>
+                  <div className="text-[11px] text-stone-500">Rhythm &amp; reflex playground match (Prize: ₦1,000)</div>
                 </button>
               </div>
             </div>
@@ -273,7 +329,7 @@ export const MinbarFeed: React.FC = () => {
               />
               <button
                 type="button"
-                onClick={handleSimulatedVoiceRecord}
+                onClick={handleToggleVoiceRecord}
                 className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-1 ${
                   isRecording
                     ? 'bg-red-600 text-white border-red-700 animate-bounce'
@@ -282,7 +338,7 @@ export const MinbarFeed: React.FC = () => {
               >
                 <Mic className="w-4 h-4" />
                 <span className="text-xs font-semibold hidden md:inline">
-                  {isRecording ? 'Recording...' : 'Voice'}
+                  {isRecording ? 'Stop & Send' : 'Voice'}
                 </span>
               </button>
               <button
@@ -296,48 +352,207 @@ export const MinbarFeed: React.FC = () => {
           </form>
 
           <div className="space-y-3">
-            {minbarPosts.map((post) => (
-              <div
-                key={post.id}
-                className="bg-stone-50 p-4 rounded-xl border border-stone-200"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">
-                      {post.authorName.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold text-stone-900">{post.authorName}</div>
-                      <div className="text-[10px] text-stone-500 uppercase tracking-wide">
-                        {post.authorStage.replace('_', ' ')}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-stone-400">
-                    {new Date(post.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+            {minbarPosts.length === 0 ? (
+              <div className="text-center py-10 px-4 space-y-2.5 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto text-xl">
+                  🎙️
                 </div>
-
-                <p className="text-sm text-stone-800 mb-3 leading-relaxed">{post.text}</p>
-
-                <div className="flex items-center gap-4 text-xs font-semibold text-stone-500">
-                  <button
-                    onClick={() => sound.playTakbeer()}
-                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer"
-                  >
-                    <Flame className="w-4 h-4 text-amber-500" />
-                    <span>{post.takbeers} Takbeer!</span>
-                  </button>
-                  <button
-                    onClick={() => sound.playCoin()}
-                    className="flex items-center gap-1.5 hover:text-red-500 transition cursor-pointer"
-                  >
-                    <Heart className="w-4 h-4 text-red-400" />
-                    <span>{post.likes} Barakah</span>
-                  </button>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-sm text-stone-800">No broadcasts yet</h4>
+                  <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                    Be the first scholar to share a voice note, recitation, or reflection with the community above!
+                  </p>
                 </div>
               </div>
-            ))}
+            ) : (
+              minbarPosts.map((post) => {
+                const isAuthor = (post.authorId && post.authorId === myUid) || post.authorName === player.name;
+                return (
+                  <div
+                    key={post.id}
+                    className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">
+                          {post.authorName.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                            <span>{post.authorName}</span>
+                            {isAuthor && (
+                              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-sm">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-stone-500 uppercase tracking-wide">
+                            {post.authorStage ? post.authorStage.replace('_', ' ') : 'Scholar'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-stone-400">
+                          {new Date(post.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isAuthor && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingPostId(post.id);
+                                setEditText(post.text);
+                              }}
+                              title="Edit Broadcast"
+                              className="p-1 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-200 cursor-pointer transition"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this broadcast from Minbar?')) {
+                                  deleteMinbarPost(post.id);
+                                }
+                              }}
+                              title="Delete Broadcast"
+                              className="p-1 rounded-md text-stone-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {editingPostId === post.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          className="flex-1 bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-hidden focus:border-emerald-600"
+                        />
+                        <button
+                          onClick={() => {
+                            if (editText.trim()) {
+                              editMinbarPost(post.id, editText.trim());
+                            }
+                            setEditingPostId(null);
+                          }}
+                          className="p-1.5 rounded-lg bg-emerald-700 text-white cursor-pointer hover:bg-emerald-800"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setEditingPostId(null)}
+                          className="p-1.5 rounded-lg bg-stone-200 text-stone-700 cursor-pointer hover:bg-stone-300"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-stone-800 leading-relaxed">{post.text}</p>
+                    )}
+
+                    {/* Audio Player if this broadcast has voice note */}
+                    {post.audioUrl && (
+                      <div className="p-2.5 rounded-xl bg-white border border-emerald-300 flex items-center gap-2.5 shadow-2xs">
+                        <Volume2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <audio controls src={post.audioUrl} className="w-full h-8" preload="metadata" />
+                      </div>
+                    )}
+
+                    {/* Reactions & Comment Toggle — with ample spacing and mobile icon-only display */}
+                    <div className="flex items-center justify-between sm:justify-start sm:gap-6 pt-2 border-t border-stone-200/60 text-xs font-semibold text-stone-600">
+                      <button
+                        onClick={() => reactToMinbarPost(post.id, 'takbeer')}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
+                        title="Give Takbeer reaction"
+                      >
+                        <Flame className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>{post.takbeers}</span>
+                        <span className="hidden sm:inline"> Takbeer!</span>
+                      </button>
+
+                      <button
+                        onClick={() => reactToMinbarPost(post.id, 'like')}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                        title="Give Barakah reaction"
+                      >
+                        <Heart className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span>{post.likes}</span>
+                        <span className="hidden sm:inline"> Barakah</span>
+                      </button>
+
+                      <button
+                        onClick={() => setOpenCommentsPostId(openCommentsPostId === post.id ? null : post.id)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-sky-50 hover:text-sky-700 transition cursor-pointer"
+                        title="View & post comments"
+                      >
+                        <MessageSquare className="w-4 h-4 text-sky-600 shrink-0" />
+                        <span>{post.comments?.length || 0}</span>
+                        <span className="hidden sm:inline"> Comments</span>
+                      </button>
+                    </div>
+
+                    {/* Comments Drawer */}
+                    {openCommentsPostId === post.id && (
+                      <div className="pt-2.5 space-y-2 border-t border-stone-200">
+                        {post.comments && post.comments.length > 0 ? (
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                            {post.comments.map((c) => (
+                              <div key={c.id} className="p-2 rounded-lg bg-white border border-stone-200 text-xs flex flex-col gap-0.5">
+                                <div className="flex items-center justify-between text-[10px] text-stone-500">
+                                  <span className="font-bold text-stone-800">
+                                    {c.authorName} · <span className="font-normal uppercase">{c.authorStage ? c.authorStage.replace('_', ' ') : 'Scholar'}</span>
+                                  </span>
+                                  <span>{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                                <p className="text-stone-700 text-xs">{c.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-stone-400 italic">No comments yet. Be the first to reflect!</p>
+                        )}
+
+                        {/* Comment Form */}
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input
+                            type="text"
+                            value={commentInputs[post.id] || ''}
+                            onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const text = (commentInputs[post.id] || '').trim();
+                                if (text) {
+                                  commentOnMinbarPost(post.id, text);
+                                  setCommentInputs({ ...commentInputs, [post.id]: '' });
+                                }
+                              }
+                            }}
+                            placeholder="Write a comment or reflection..."
+                            className="flex-1 bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-hidden focus:border-emerald-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const text = (commentInputs[post.id] || '').trim();
+                              if (text) {
+                                commentOnMinbarPost(post.id, text);
+                                setCommentInputs({ ...commentInputs, [post.id]: '' });
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                          >
+                            Reply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}

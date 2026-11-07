@@ -17,19 +17,21 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
   const { player, reward } = useGameStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [mode, setMode] = useState<'menu' | 'friendly' | 'cup'>('menu');
+  const [mode, setMode] = useState<'menu' | 'friendly' | 'cup' | 'twoplayer'>('menu');
   const [score, setScore] = useState<{ you: number; ai: number }>({ you: 0, ai: 0 });
   const [banner, setBanner] = useState<string | null>(null);
   const [winner, setWinner] = useState<'you' | 'ai' | null>(null);
 
   const inputXRef = useRef<number>(W / 2);
+  const p2InputXRef = useRef<number>(W / 2);
   const keysRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const p2KeysRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
 
-  const startMatch = (kind: 'friendly' | 'cup') => {
+  const startMatch = (kind: 'friendly' | 'cup' | 'twoplayer') => {
     sound.playWalaahTap();
     setScore({ you: 0, ai: 0 });
     setWinner(null);
-    setBanner('KICK OFF! First to 3 Goals!');
+    setBanner(kind === 'twoplayer' ? '2-PLAYER DUEL! First to 3 Goals!' : 'KICK OFF! First to 3 Goals!');
     setMode(kind);
   };
 
@@ -72,12 +74,26 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keysRef.current.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keysRef.current.right = true;
+      if (mode === 'twoplayer') {
+        if (e.key === 'a' || e.key === 'A') keysRef.current.left = true;
+        if (e.key === 'd' || e.key === 'D') keysRef.current.right = true;
+        if (e.key === 'ArrowLeft') p2KeysRef.current.left = true;
+        if (e.key === 'ArrowRight') p2KeysRef.current.right = true;
+      } else {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keysRef.current.left = true;
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keysRef.current.right = true;
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keysRef.current.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keysRef.current.right = false;
+      if (mode === 'twoplayer') {
+        if (e.key === 'a' || e.key === 'A') keysRef.current.left = false;
+        if (e.key === 'd' || e.key === 'D') keysRef.current.right = false;
+        if (e.key === 'ArrowLeft') p2KeysRef.current.left = false;
+        if (e.key === 'ArrowRight') p2KeysRef.current.right = false;
+      } else {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keysRef.current.left = false;
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keysRef.current.right = false;
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -121,13 +137,22 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
       youX += (inputXRef.current - youX) * Math.min(1, dt * 18);
       youX = Math.max(40, Math.min(W - 40, youX));
 
-      // AI tracks ball when heading north or in top half
-      const aiTarget = ball.vy < 0 || ball.y < H * 0.62 ? ball.x : W / 2;
-      const diff = aiTarget - aiX;
-      const maxStep = aiSpeed * dt;
-      if (Math.abs(diff) > maxStep) aiX += Math.sign(diff) * maxStep;
-      else aiX = aiTarget;
-      aiX = Math.max(40, Math.min(W - 40, aiX));
+      if (mode === 'twoplayer') {
+        const p2KeyDir = (p2KeysRef.current.right ? 1 : 0) - (p2KeysRef.current.left ? 1 : 0);
+        if (p2KeyDir !== 0) {
+          p2InputXRef.current = Math.max(40, Math.min(W - 40, p2InputXRef.current + p2KeyDir * 290 * dt));
+        }
+        aiX += (p2InputXRef.current - aiX) * Math.min(1, dt * 18);
+        aiX = Math.max(40, Math.min(W - 40, aiX));
+      } else {
+        // AI tracks ball when heading north or in top half
+        const aiTarget = ball.vy < 0 || ball.y < H * 0.62 ? ball.x : W / 2;
+        const diff = aiTarget - aiX;
+        const maxStep = aiSpeed * dt;
+        if (Math.abs(diff) > maxStep) aiX += Math.sign(diff) * maxStep;
+        else aiX = aiTarget;
+        aiX = Math.max(40, Math.min(W - 40, aiX));
+      }
 
       if (now >= freezeUntil) {
         ball.x += ball.vx * dt;
@@ -153,12 +178,12 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
             sound.playTakbeer();
             if (youScore >= WIN_GOALS) {
               setWinner('you');
-              const prize = isCup ? 1200 : 500;
+              const prize = isCup ? 1200 : mode === 'twoplayer' ? 1000 : 500;
               const def = isCup ? 6 : 4;
               const bar = isCup ? 5 : 3;
               reward(
                 { naira: prize, pasanResistance: def, barakah: bar, energy: -6 },
-                `Defeated Captain Ridwan ${youScore}-${aiScore} in Ping-Pong Football! Won ₦${prize.toLocaleString()} & +${def} Agility!`,
+                `Defeated opponent ${youScore}-${aiScore} in Table Soccer! Won ₦${prize.toLocaleString()} & +${def} Agility!`,
               );
               return;
             }
@@ -306,7 +331,12 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
   const handlePointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const relX = ((e.clientX - rect.left) / rect.width) * W;
-    inputXRef.current = Math.max(40, Math.min(W - 40, relX));
+    const relY = ((e.clientY - rect.top) / rect.height) * H;
+    if (mode === 'twoplayer' && relY < H / 2) {
+      p2InputXRef.current = Math.max(40, Math.min(W - 40, relX));
+    } else {
+      inputXRef.current = Math.max(40, Math.min(W - 40, relX));
+    }
   };
 
   if (mode === 'menu') {
@@ -318,7 +348,7 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
               ⚽ Kewu F.C. — Ping-Pong Table Soccer
             </h3>
             <p className="text-xs text-stone-500">
-              Slide your Goalie &amp; Striker rods to bounce the ball past Captain Ridwan into the Monkey Post!
+              Slide your Goalie &amp; Striker rods to bounce the ball past your opponent into the Monkey Post!
             </p>
           </div>
           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 font-mono text-xs font-extrabold">
@@ -327,6 +357,23 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() => startMatch('twoplayer')}
+            className="p-4 rounded-2xl border-2 border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/80 text-left cursor-pointer transition sm:col-span-2 shadow-xs"
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-sm text-stone-900 flex items-center gap-1.5">
+                👥 2-Player Local Duel (Same Screen / Device)
+              </span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-200 text-indigo-950 font-extrabold">
+                Win ₦1,000 Pot
+              </span>
+            </div>
+            <p className="text-xs text-stone-600 mt-1.5">
+              Player 1 (Blue) uses <b>A &amp; D</b> keys (or touch bottom). Player 2 (Red) uses <b>Left &amp; Right Arrows</b> (or touch top). First to 3 goals claims the <b>₦1,000</b> trophy!
+            </p>
+          </button>
+
           <button
             onClick={() => startMatch('friendly')}
             className="p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 hover:bg-emerald-100/80 text-left cursor-pointer transition"
@@ -367,9 +414,9 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
     <div className="p-4 flex flex-col items-center gap-3">
       {/* Scoreboard */}
       <div className="w-full max-w-[360px] flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
-        <span className="text-sky-300">YOU (Blue): {score.you}</span>
+        <span className="text-sky-300">{mode === 'twoplayer' ? 'P1 (Blue / A-D): ' : 'YOU (Blue): '} {score.you}</span>
         <span className="text-amber-300 font-mono">FIRST TO {WIN_GOALS}</span>
-        <span className="text-rose-400">RIDWAN (Red): {score.ai}</span>
+        <span className="text-rose-400">{mode === 'twoplayer' ? 'P2 (Red / Arrows): ' : 'RIDWAN (Red): '} {score.ai}</span>
       </div>
 
       {banner && !winner && (

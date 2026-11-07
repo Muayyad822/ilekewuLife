@@ -46,6 +46,15 @@ export interface GameEvent {
   choices: EventChoice[];
 }
 
+export interface MinbarComment {
+  id: string;
+  authorId?: string;
+  authorName: string;
+  authorStage: LifeStage;
+  text: string;
+  timestamp: number;
+}
+
 export interface MinbarPost {
   id: string;
   authorId?: string;
@@ -57,6 +66,7 @@ export interface MinbarPost {
   likes: number;
   takbeers: number;
   timestamp: number;
+  comments?: MinbarComment[];
 }
 
 export type HousingTierId = 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa';
@@ -150,6 +160,34 @@ export interface OnlinePeer {
   isLive?: boolean;
 }
 
+export interface MultiplayerMatchRoom {
+  id: string;
+  gameType: 'ayo' | 'tenten' | 'football' | 'quiz_duel';
+  player1Uid: string;
+  player1Name: string;
+  player2Uid: string;
+  player2Name: string;
+  turn: 'player1' | 'player2';
+  state: Record<string, any>; // Synchronized board/game state
+  wager?: number;
+  winnerUid?: string;
+  status: 'active' | 'completed' | 'abandoned';
+  lastMoveAt: number;
+}
+
+export interface PeerInteraction {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  toUid: string;
+  type: 'salaam' | 'duel_invite';
+  gameType?: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
+  roomId?: string;
+  wager?: number;
+  message: string;
+  createdAt: number;
+}
+
 export interface GameChallenge {
   id: string;
   fromUid: string;
@@ -160,5 +198,7 @@ export interface GameChallenge {
   wager: number;
   status: 'pending' | 'accepted' | 'completed' | 'declined';
   winnerUid?: string;
+  fromScore?: number;
+  toScore?: number;
   createdAt: number;
 }

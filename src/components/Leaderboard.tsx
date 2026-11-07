@@ -15,74 +15,46 @@ interface ScholarRanking {
   isLive?: boolean;
 }
 
-const NATIONAL_SCHOLARS: ScholarRanking[] = [
-  {
-    id: 'nat_1',
-    name: 'Sheikh Ridwanullahi (Agege)',
-    stage: 'Grand Mufti',
-    madrasah: "Markaz Ta'leem, Agege",
-    ilm: 99,
-    hifzJuz: 30,
-  },
-  {
-    id: 'nat_2',
-    name: 'Ustadhah Khadijah (Ilorin)',
-    stage: 'Senior Mufassirah',
-    madrasah: 'Adabiyyah Arabic College',
-    ilm: 97,
-    hifzJuz: 30,
-  },
-  {
-    id: 'nat_3',
-    name: 'Alfa Qasim Al-Bukhari (Ibadan)',
-    stage: 'Hadith Master',
-    madrasah: 'Darul Uloom, Ibadan',
-    ilm: 94,
-    hifzJuz: 28,
-  },
-  {
-    id: 'nat_4',
-    name: 'Brother Abdul-Basit (Oshodi)',
-    stage: 'Markaziy',
-    madrasah: 'Mahad Arabic Academy',
-    ilm: 82,
-    hifzJuz: 18,
-  },
-];
-
 export const Leaderboard: React.FC = () => {
   const player = useGameStore((s) => s.player);
   const onlinePeers = useGameStore((s) => s.onlinePeers);
+  const authUser = useGameStore((s) => s.authUser);
 
   const rankings = useMemo(() => {
-    const map = new Map<string, ScholarRanking>();
-    NATIONAL_SCHOLARS.forEach((s) => map.set(s.id, s));
+    const list: ScholarRanking[] = [];
+    const myUid = authUser?.uid || player.id;
+    const seen = new Set<string>();
+
     onlinePeers.forEach((p) => {
-      map.set(p.uid, {
+      if (p.uid === myUid) return; // Add current player separately below
+      if (seen.has(p.uid)) return;
+      seen.add(p.uid);
+      list.push({
         id: p.uid,
         name: p.name,
-        stage: p.stage.replace('_', ' '),
-        madrasah: p.madrasahName,
-        ilm: p.ilm,
-        hifzJuz: p.hifzJuz,
-        isLive: p.isLive,
+        stage: p.stage ? p.stage.replace('_', ' ') : 'Madrasah Scholar',
+        madrasah: p.madrasahName || 'MAHD IQRA, Lagos',
+        ilm: p.ilm ?? 15,
+        hifzJuz: p.hifzJuz ?? 1,
+        isLive: true,
       });
     });
-    map.set('current_player', {
-      id: 'current_player',
+
+    list.push({
+      id: myUid,
       name: player.name,
-      stage: player.stage.replace('_', ' '),
-      madrasah: player.madrasahName,
+      stage: player.stage ? player.stage.replace('_', ' ') : 'Madrasah Scholar',
+      madrasah: player.madrasahName || 'MAHD IQRA, Lagos',
       ilm: player.stats.ilm,
       hifzJuz: player.hifzJuz,
       isPlayer: true,
       isLive: true,
     });
 
-    return Array.from(map.values()).sort(
+    return list.sort(
       (a, b) => b.hifzJuz * 3 + b.ilm - (a.hifzJuz * 3 + a.ilm),
     );
-  }, [player, onlinePeers]);
+  }, [player, onlinePeers, authUser]);
 
   const playerRank = rankings.findIndex((r) => r.isPlayer) + 1;
 
