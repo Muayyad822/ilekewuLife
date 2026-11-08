@@ -180,11 +180,24 @@ export interface PeerInteraction {
   fromUid: string;
   fromName: string;
   toUid: string;
-  type: 'salaam' | 'duel_invite';
+  type: 'salaam' | 'duel_invite' | 'chat_message';
   gameType?: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
   roomId?: string;
   wager?: number;
   message: string;
+  createdAt: number;
+}
+
+export interface PrivateChatMessage {
+  id: string;
+  chatId: string;
+  senderUid: string;
+  senderName: string;
+  recipientUid: string;
+  recipientName: string;
+  text?: string;
+  audioUrl?: string;
+  duration?: number;
   createdAt: number;
 }
 

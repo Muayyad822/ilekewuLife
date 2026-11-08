@@ -19,6 +19,7 @@ import {
   Edit2,
   Trash2,
   MessageSquare,
+  MessageCircle,
   Check,
   X,
   Volume2,
@@ -38,6 +39,7 @@ export const MinbarFeed: React.FC = () => {
   const challenges = useGameStore((s) => s.challenges);
   const sendSalaamToPeer = useGameStore((s) => s.sendSalaamToPeer);
   const organizeGameWithPeer = useGameStore((s) => s.organizeGameWithPeer);
+  const openChatWithPeer = useGameStore((s) => s.openChatWithPeer);
 
   const myUid = authUser?.uid || player.id;
 
@@ -258,13 +260,10 @@ export const MinbarFeed: React.FC = () => {
 
                 <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
                   <button
-                    onClick={() => {
-                      const res = sendSalaamToPeer(peer);
-                      setToast(res.msg);
-                    }}
-                    className="flex-1 py-2 px-3 rounded-xl border border-stone-200 bg-stone-50 hover:bg-emerald-50 hover:border-emerald-300 text-xs font-bold text-stone-800 cursor-pointer flex items-center justify-center gap-1.5"
+                    onClick={() => openChatWithPeer(peer)}
+                    className="flex-1 py-2 px-3 rounded-xl border border-stone-200 bg-stone-50 hover:bg-emerald-50 hover:border-emerald-300 text-xs font-bold text-stone-800 cursor-pointer flex items-center justify-center gap-1.5 transition"
                   >
-                    <Hand className="w-3.5 h-3.5 text-emerald-700" /> Send Salaam
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" /> Private Chat
                   </button>
                   <button
                     onClick={() => setSelectedPeer(peer)}

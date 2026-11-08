@@ -5,6 +5,7 @@ import { LagosWorld } from '@/components/ThreeWorld/LagosWorld';
 import { TopHud, Dock, PanelDrawer } from '@/components/GameHud';
 import { ActivityModal } from '@/components/Activities';
 import { AuthGate } from '@/components/AuthGate';
+import { PrivateChatModal } from '@/components/PrivateChatModal';
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       <Dock />
       <PanelDrawer />
       <ActivityModal />
+      <PrivateChatModal />
       <AuthGate />
     </main>
   );

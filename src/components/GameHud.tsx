@@ -169,6 +169,28 @@ export const TopLeftHud: React.FC = () => {
                   Accept & Compete!
                 </button>
               )}
+              {incomingAlert.type === 'chat_message' && (
+                <button
+                  onClick={() => {
+                    const peer = useGameStore.getState().onlinePeers.find((p) => p.uid === incomingAlert.fromUid) || {
+                      uid: incomingAlert.fromUid || '',
+                      name: incomingAlert.fromName || 'Scholar',
+                      stage: 'omo_kewu',
+                      madrasahName: 'Madrasah Scholar',
+                      ilm: 50,
+                      hifzJuz: 1,
+                      housingTier: 'ruwaq',
+                      currentTab: 'compound',
+                      lastSeen: Date.now(),
+                    };
+                    useGameStore.getState().openChatWithPeer(peer);
+                    setIncomingAlert(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-extrabold text-xs cursor-pointer shadow-md transition"
+                >
+                  Reply
+                </button>
+              )}
               <button
                 onClick={() => setIncomingAlert(null)}
                 className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-300 hover:text-white cursor-pointer"

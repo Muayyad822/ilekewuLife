@@ -12,37 +12,111 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
-    // 1. Private User Game State (Save slots, wallet, stats, inventory)
+    // Helper: checks if user is an author of a Minbar post
+    function isPostAuthor(data) {
+      return isAuthenticated() && (
+        ('authorId' in data && data.authorId == request.auth.uid) ||
+        ('authorUid' in data && data.authorUid == request.auth.uid) ||
+        (!('authorId' in data) && !('authorUid' in data))
+      );
+    }
+
+    // Helper: checks if user is a participant in a multiplayer match
+    function isMatchParticipant(data) {
+      return isAuthenticated() && (
+        data.player1Uid == request.auth.uid ||
+        data.player2Uid == request.auth.uid
+      );
+    }
+
+    // Helper: checks if user is sender or recipient in a peer interaction
+    function isInteractionParty(data) {
+      return isAuthenticated() && (
+        data.fromUid == request.auth.uid ||
+        data.toUid == request.auth.uid
+      );
+    }
+
+    // Helper: checks if user is a participant in a private chat
+    function isChatParticipant(chatId) {
+      return isAuthenticated() && (
+        chatId.matches('.*' + request.auth.uid + '.*') ||
+        chatId.split('_').hasAny([request.auth.uid])
+      );
+    }
+
+    // 1. Private User Game State (Profile, wallet, stats, inventory, housing, curriculum)
+    // Completely private: strictly readable and writable only by the authenticated owner.
     match /users/{uid} {
       allow read, write: if isOwner(uid);
     }
 
     // 2. Real-time Presence & Madrasah Leaderboard
-    // Any signed-in student can see who is online and view scholar ranks,
-    // but users can only write and broadcast their own presence heartbeat.
+    // Publicly readable so students and visitors can see online scholars and scholar ranks.
+    // Writes are restricted to the scholar's own presence heartbeat.
     match /presence/{uid} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isOwner(uid);
     }
 
-    // 3. Peer-to-Peer Academic Challenges (Hifz & Nahw Duels)
-    match /challenges/{challengeId} {
+    // 3. Peer-to-Peer Real-Time Interactions (Salaam greetings, 1v1 duel invitations)
+    // Authenticated users can send interactions, listen for incoming alerts, and clean them up.
+    match /interactions/{interactionId} {
       allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.fromUid == request.auth.uid;
+      allow update, delete: if isInteractionParty(resource.data);
+    }
+
+    // 4. Peer-to-Peer Academic Challenges (Quiz Duels, Ayo, Football, Ten-Ten)
+    // Noticeboard is readable by all scholars. Challenger creates; either challenger or opponent can update results.
+    match /challenges/{challengeId} {
+      allow read: if true;
       allow create: if isAuthenticated() && request.resource.data.fromUid == request.auth.uid;
       allow update: if isAuthenticated() && (
         resource.data.fromUid == request.auth.uid ||
         resource.data.toUid == request.auth.uid
       );
-      allow delete: if isAuthenticated() && resource.data.fromUid == request.auth.uid;
+      allow delete: if isAuthenticated() && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid
+      );
     }
 
-    // 4. Minbar Community Feed (Announcements, reflections & khutbah highlights)
-    match /minbar_posts/{postId} {
+    // 5. Multiplayer Match Rooms (Real-time synchronized turns for Ayo, Ten-Ten, Football, Quiz Duels)
+    // Room participants sync board moves, state, turns, and declare match winners.
+    match /match_rooms/{roomId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      // Allow authenticated students to like or interact with posts
+      allow create: if isMatchParticipant(request.resource.data);
+      allow update: if isMatchParticipant(resource.data);
+      allow delete: if isMatchParticipant(resource.data);
+    }
+
+    // 6. Minbar Community Feed (Reflections, Khutbah voice notes, announcements, reactions & comments)
+    // Feed is publicly readable. Authenticated scholars can create posts, like/takbeer, or add comments.
+    // Post edits and deletions are reserved for the author.
+    match /minbar_posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (
+        !('authorId' in request.resource.data) ||
+        request.resource.data.authorId == request.auth.uid ||
+        request.resource.data.authorUid == request.auth.uid
+      );
+      // Authenticated scholars can react (takbeers, likes) or add comments
       allow update: if isAuthenticated();
-      allow delete: if isAuthenticated() && resource.data.authorUid == request.auth.uid;
+      // Only the author can delete their post
+      allow delete: if isPostAuthor(resource.data);
+    }
+
+    // 7. Private Direct Messages & Audio Voice Notes (P2P Scholar Chat)
+    // Strictly accessible only by the two participating scholars.
+    match /chats/{chatId} {
+      allow read, write: if isChatParticipant(chatId);
+
+      match /messages/{messageId} {
+        allow read: if isChatParticipant(chatId);
+        allow create: if isChatParticipant(chatId) && request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if isChatParticipant(chatId) && resource.data.senderUid == request.auth.uid;
+      }
     }
 
     // Default deny for everything else
@@ -51,4 +125,3 @@ service cloud.firestore {
     }
   }
 }
-

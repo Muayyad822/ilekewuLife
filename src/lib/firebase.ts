@@ -43,6 +43,7 @@ import {
   PlayerHousing,
   PlayerEducation,
   Outfit,
+  PrivateChatMessage,
 } from '@/types/game';
 
 const firebaseConfig = {
@@ -263,6 +264,73 @@ export function subscribeIncomingInteractions(
     );
   } catch (err) {
     console.warn('Could not subscribe to incoming interactions:', err);
+    return () => {};
+  }
+}
+
+export function getPrivateChatId(uid1: string, uid2: string): string {
+  return [uid1, uid2].sort().join('_');
+}
+
+export async function sendPrivateChatMessage(
+  message: Omit<PrivateChatMessage, 'id'>,
+): Promise<string | null> {
+  if (!db) return null;
+  try {
+    const msgRef = await addDoc(
+      collection(db, 'chats', message.chatId, 'messages'),
+      message,
+    );
+    // Update parent chat document with latest preview
+    await setDoc(
+      doc(db, 'chats', message.chatId),
+      {
+        chatId: message.chatId,
+        participants: [message.senderUid, message.recipientUid],
+        lastMessage: message.text || (message.audioUrl ? '🎙️ [Voice Note]' : ''),
+        lastMessageAt: message.createdAt,
+        lastSenderUid: message.senderUid,
+      },
+      { merge: true },
+    );
+    return msgRef.id;
+  } catch (err) {
+    console.warn('Could not send private chat message:', err);
+    return null;
+  }
+}
+
+export function subscribePrivateChatMessages(
+  chatId: string,
+  cb: (messages: PrivateChatMessage[]) => void,
+): () => void {
+  if (!db || !chatId) {
+    cb([]);
+    return () => {};
+  }
+  try {
+    const q = query(
+      collection(db, 'chats', chatId, 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(60),
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        const msgs: PrivateChatMessage[] = [];
+        snap.forEach((d) => {
+          msgs.push({ id: d.id, ...(d.data() as Omit<PrivateChatMessage, 'id'>) });
+        });
+        cb(msgs);
+      },
+      (err) => {
+        console.warn('Could not subscribe to private chat messages:', err);
+        cb([]);
+      },
+    );
+  } catch (err) {
+    console.warn('Private chat subscription error:', err);
+    cb([]);
     return () => {};
   }
 }

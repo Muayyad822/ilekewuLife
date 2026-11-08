@@ -20,6 +20,7 @@ import {
   Users,
   Award,
   Hand,
+  MessageCircle,
   Swords,
   X,
   Lock,
@@ -33,6 +34,7 @@ export const ClassroomView: React.FC = () => {
   const completeDailyClassroomLesson = useGameStore((s) => s.completeDailyClassroomLesson);
   const sendSalaamToPeer = useGameStore((s) => s.sendSalaamToPeer);
   const organizeGameWithPeer = useGameStore((s) => s.organizeGameWithPeer);
+  const openChatWithPeer = useGameStore((s) => s.openChatWithPeer);
 
   const featuredSubject = useMemo(() => getFeaturedSubjectForToday(), []);
   const [activeSubject, setActiveSubject] = useState<SubjectId>(activeClassroomSubject || featuredSubject);
@@ -253,14 +255,11 @@ export const ClassroomView: React.FC = () => {
                           </div>
                         </div>
                         <button
-                          onClick={() => {
-                            const res = sendSalaamToPeer(peer);
-                            setPeerToast(res.msg);
-                          }}
-                          title="Send Salaam & Dua"
+                          onClick={() => openChatWithPeer(peer)}
+                          title="Private Chat (Text & Voice Note)"
                           className="p-1.5 rounded-lg bg-white/10 hover:bg-emerald-600 text-xs cursor-pointer transition"
                         >
-                          <Hand className="w-3.5 h-3.5" />
+                          <MessageCircle className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => {

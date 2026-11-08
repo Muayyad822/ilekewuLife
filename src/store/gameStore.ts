@@ -102,6 +102,7 @@ interface GameState {
   challenges: GameChallenge[];
   greetedPeerIds: string[];
   activeMatchRoom: MultiplayerMatchRoom | null;
+  activeChatPeer: OnlinePeer | null;
 
   // Interactive systems
   owned: string[];
@@ -171,6 +172,8 @@ interface GameState {
     wager: number,
   ) => { ok: boolean; msg: string };
   setActiveMatchRoom: (room: MultiplayerMatchRoom | null) => void;
+  openChatWithPeer: (peer: OnlinePeer) => void;
+  closeChat: () => void;
   acceptIncomingChallenge: (alert: {
     id: string;
     type: string;
@@ -307,6 +310,7 @@ export const useGameStore = create<GameState>()(
       challenges: [],
       greetedPeerIds: [],
       activeMatchRoom: null,
+      activeChatPeer: null,
 
       setAuthChecked: (authChecked) => set({ authChecked }),
       setIsGuest: (isGuest) => set({ isGuest }),
@@ -1116,6 +1120,9 @@ export const useGameStore = create<GameState>()(
   },
 
   setActiveMatchRoom: (activeMatchRoom) => set({ activeMatchRoom }),
+
+  openChatWithPeer: (peer) => set({ activeChatPeer: peer }),
+  closeChat: () => set({ activeChatPeer: null }),
 
   acceptIncomingChallenge: (alert) => {
     const { player, authUser } = get();
