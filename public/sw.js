@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ilekewu-cache-v2';
+const CACHE_NAME = 'ilekewu-cache-v3';
 
 // Core offline app shell assets
 const PRECACHE_ASSETS = [

@@ -1141,6 +1141,7 @@ export const useGameStore = create<GameState>()(
         status: 'active',
         lastMoveAt: Date.now(),
       };
+      createOrJoinMatchRoom(room);
       set({ activeMatchRoom: room });
     }
     if (alert.gameType === 'ayo') {
@@ -1149,6 +1150,8 @@ export const useGameStore = create<GameState>()(
       set({ activity: 'tenten', activeTab: 'compound' });
     } else if (alert.gameType === 'football') {
       set({ activity: 'football', activeTab: 'compound' });
+    } else if (alert.gameType === 'quiz_duel') {
+      set({ activity: 'quiz_duel', activeTab: 'classroom' });
     } else {
       set({ activeTab: 'classroom' });
     }
@@ -1164,6 +1167,26 @@ export const useGameStore = create<GameState>()(
     sound.playCoin();
 
     const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+
+    const initialFootballState = {
+      p1Score: 0,
+      p2Score: 0,
+      p1X: 180,
+      p2X: 180,
+      ball: { x: 180, y: 230, vx: 0, vy: 0 },
+      msg: `Match started! First to 3 goals wins.`,
+    };
+
+    const initialQuizDuelState = {
+      questionIdx: 0,
+      p1Score: 0,
+      p2Score: 0,
+      p1Answers: {},
+      p2Answers: {},
+      p1Done: false,
+      p2Done: false,
+      msg: `Musabaqah duel started! 5 questions.`,
+    };
 
     const initialAyoState = {
       board: Array(12).fill(4),
@@ -1186,6 +1209,15 @@ export const useGameStore = create<GameState>()(
       over: null,
     };
 
+    const matchRoomState =
+      gameType === 'ayo'
+        ? initialAyoState
+        : gameType === 'tenten'
+        ? initialTenTenState
+        : gameType === 'football'
+        ? initialFootballState
+        : initialQuizDuelState;
+
     const matchRoom: MultiplayerMatchRoom = {
       id: roomId,
       gameType,
@@ -1194,7 +1226,7 @@ export const useGameStore = create<GameState>()(
       player2Uid: peer.uid,
       player2Name: peer.name,
       turn: 'player1',
-      state: gameType === 'ayo' ? initialAyoState : initialTenTenState,
+      state: matchRoomState,
       wager: matchWager,
       status: 'active',
       lastMoveAt: Date.now(),
@@ -1240,6 +1272,8 @@ export const useGameStore = create<GameState>()(
       set({ activity: 'football', activeTab: 'compound' });
     } else if (gameType === 'tenten') {
       set({ activity: 'tenten', activeTab: 'compound' });
+    } else if (gameType === 'quiz_duel') {
+      set({ activity: 'quiz_duel', activeTab: 'classroom' });
     } else {
       set({ activeTab: 'classroom' });
     }

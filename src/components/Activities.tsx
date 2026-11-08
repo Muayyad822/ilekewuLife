@@ -23,6 +23,7 @@ import { prayerFor } from '@/lib/time';
 import { sound } from '@/lib/audio';
 import { FootballMinigame } from '@/components/FootballMinigame';
 import { TenTenGame, SuweGame, AyoGame, SkippingGame, CatcherGame } from '@/components/RecreationGames';
+import { QuizDuelGame } from '@/components/QuizDuelGame';
 import { CheckCircle2, XCircle, Lock, Bus, Sparkles, BookOpen, ShoppingBag, Volume2 } from 'lucide-react';
 
 // ============================================================================
@@ -893,6 +894,9 @@ export const ActivityModal: React.FC = () => {
   } else if (activity === 'football') {
     title = 'Kewu F.C. — Ping-Pong Table Soccer';
     body = <FootballMinigame onClose={close} />;
+  } else if (activity === 'quiz_duel') {
+    title = 'Musabaqah 1v1 Classroom Duel';
+    body = <QuizDuelGame onClose={close} />;
   } else if (activity === 'tenten') {
     title = 'Tinko-Tinko — Foot-Clapping Duel';
     body = <TenTenGame onClose={close} />;

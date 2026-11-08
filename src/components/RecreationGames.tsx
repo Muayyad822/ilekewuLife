@@ -117,6 +117,7 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
 
     const unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
       if (!room || !room.state) return;
+      setActiveMatchRoom(room);
       const st = room.state;
       const p1Score = st.you ?? 0;
       const p2Score = st.her ?? 0;
@@ -719,6 +720,7 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
 
     const unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
       if (!room || !room.state) return;
+      setActiveMatchRoom(room);
       const st = room.state;
       const p1Seeds = st.p1Seeds ?? 0;
       const p2Seeds = st.p2Seeds ?? 0;
@@ -845,8 +847,8 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     }
   };
 
-  const topRow = [11, 10, 9, 8, 7, 6];
-  const bottomRow = [0, 1, 2, 3, 4, 5];
+  const topRow = isMultiplayer && !isPlayer1 ? [0, 1, 2, 3, 4, 5] : [11, 10, 9, 8, 7, 6];
+  const bottomRow = isMultiplayer && !isPlayer1 ? [6, 7, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5];
 
   const Pit: React.FC<{ i: number }> = ({ i }) => {
     const isMyPit = isMultiplayer ? (isPlayer1 ? sideOf(i) === 'you' : sideOf(i) === 'ai') : sideOf(i) === 'you';
@@ -857,7 +859,7 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         onClick={() => play(i)}
         className={`aspect-square rounded-full border-4 flex flex-col items-center justify-center font-extrabold text-sm ${
           isMyPit ? 'bg-amber-200 border-amber-800 text-amber-950' : 'bg-stone-300 border-stone-700 text-stone-900'
-        } ${playable ? 'cursor-pointer hover:brightness-110 kw-pulse' : 'cursor-default'}`}
+        } ${playable ? 'cursor-pointer hover:brightness-110 kw-pulse' : 'cursor-default opacity-85'}`}
       >
         <span>{g.board[i]}</span>
         <span className="text-[8px] leading-none tracking-tighter">{'●'.repeat(Math.min(g.board[i], 6))}</span>
@@ -873,21 +875,35 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         badge={isMultiplayer ? `1v1 Match · ₦1,000 Pot` : 'Win ₦800'}
       />
 
-      <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
+      <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow-md">
         <span className="text-amber-300">{player.name} (YOU): {g.you}</span>
-        <span className="text-stone-300">{g.turn === 'you' ? 'Your move' : `${opponentName} is thinking…`}</span>
+        <span className="text-stone-300">{g.turn === 'you' ? '🟢 Your Move' : `⏳ ${opponentName} is moving…`}</span>
         <span className="text-stone-200">{opponentName.toUpperCase()}: {g.ai}</span>
       </div>
 
       <div className="rounded-2xl bg-amber-900 p-2 sm:p-3 space-y-1.5 sm:space-y-2 shadow-inner">
+        <div className="text-[10px] font-bold text-amber-200/80 px-1 flex justify-between">
+          <span>{opponentName.toUpperCase()}&apos;S PITS (OPPONENT)</span>
+          <span>Captured: {g.ai}</span>
+        </div>
         <div className="grid grid-cols-6 gap-1.5 sm:gap-2">{topRow.map((i) => <Pit key={i} i={i} />)}</div>
         <div className="grid grid-cols-6 gap-1.5 sm:gap-2">{bottomRow.map((i) => <Pit key={i} i={i} />)}</div>
+        <div className="text-[10px] font-bold text-amber-300 px-1 flex justify-between">
+          <span>YOUR PITS (TAP BELOW WHEN IT&apos;S YOUR TURN)</span>
+          <span>Captured: {g.you}</span>
+        </div>
       </div>
 
-      <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center justify-between">
-        <span>{g.msg}</span>
+      <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
+        <span className="font-bold">
+          {isMultiplayer
+            ? g.turn === 'you'
+              ? '🟢 YOUR TURN: Tap one of your bottom pits to sow seeds.'
+              : `⏳ Waiting for ${opponentName} to move on their device...`
+            : g.msg}
+        </span>
         {isMultiplayer && (
-          <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+          <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> Live 1v1 Room
           </span>
         )}

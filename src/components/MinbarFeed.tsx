@@ -279,21 +279,45 @@ export const MinbarFeed: React.FC = () => {
           {challenges.length > 0 && (
             <div className="rounded-2xl border border-stone-200 bg-white p-4 space-y-2">
               <div className="text-xs font-extrabold uppercase tracking-wider text-stone-500">
-                Recent Organized Matches
+                Live Match Noticeboard (Cross-Device Arena)
               </div>
               <div className="space-y-1.5">
-                {challenges.slice(0, 4).map((c) => (
-                  <div
-                    key={c.id}
-                    className="text-xs bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 flex items-center justify-between"
-                  >
-                    <span>
-                      <b>{c.fromName}</b> challenged <b>{c.toName}</b> to{' '}
-                      <span className="uppercase font-bold text-emerald-700">{c.gameType.replace('_', ' ')}</span>
-                    </span>
-                    <span className="font-mono font-bold text-amber-800">₦{c.wager}</span>
-                  </div>
-                ))}
+                {challenges.slice(0, 6).map((c) => {
+                  const isParticipant = c.toUid === myUid || c.fromUid === myUid;
+                  return (
+                    <div
+                      key={c.id}
+                      className={`text-xs rounded-xl px-3 py-2 flex items-center justify-between gap-2 border ${
+                        isParticipant ? 'bg-amber-50/80 border-amber-300 shadow-xs' : 'bg-stone-50 border-stone-200'
+                      }`}
+                    >
+                      <div>
+                        <span>
+                          <b>{c.fromName}</b> challenged <b>{c.toName}</b> to{' '}
+                          <span className="uppercase font-bold text-emerald-700">{c.gameType.replace('_', ' ')}</span>
+                        </span>
+                        <span className="font-mono font-bold text-amber-800 ml-2">₦{c.wager}</span>
+                      </div>
+                      {isParticipant && (
+                        <button
+                          onClick={() => {
+                            useGameStore.getState().acceptIncomingChallenge({
+                              id: c.id,
+                              type: 'duel_invite',
+                              gameType: c.gameType,
+                              roomId: 'room_' + c.id,
+                              fromUid: c.fromUid,
+                              fromName: c.fromName,
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] cursor-pointer shadow-xs transition shrink-0"
+                        >
+                          ⚡ Enter Match
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -124,7 +124,8 @@ export type ActivityId =
   | 'hifz' | 'huruf' | 'tutor' | 'wudu' | 'nahw'
   | 'adhan' | 'khutbah' | 'homelesson'
   | 'shop' | 'wardrobe' | 'bus'
-  | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher';
+  | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher'
+  | 'quiz_duel';
 
 export interface Outfit {
   robe: number;
