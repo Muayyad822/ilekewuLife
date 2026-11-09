@@ -105,13 +105,6 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     roomStateRef.current = activeMatchRoom?.state || {};
   }, [activeMatchRoom?.state]);
 
-  useEffect(() => {
-    return () => {
-      if (isMultiplayer) {
-        useGameStore.getState().setActiveMatchRoom(null);
-      }
-    };
-  }, [isMultiplayer]);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const role: 'attack' | 'defend' = isMultiplayer
@@ -728,14 +721,6 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     over: null,
   });
   const rewarded = useRef(false);
-
-  useEffect(() => {
-    return () => {
-      if (isMultiplayer) {
-        useGameStore.getState().setActiveMatchRoom(null);
-      }
-    };
-  }, [isMultiplayer]);
 
   // Sync with Firestore match room in live 1v1 multiplayer
   useEffect(() => {

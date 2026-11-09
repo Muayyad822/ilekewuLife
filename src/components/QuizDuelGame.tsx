@@ -87,13 +87,6 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     roomStateRef.current = activeMatchRoom?.state || {};
   }, [activeMatchRoom?.state]);
 
-  useEffect(() => {
-    return () => {
-      if (isMultiplayer) {
-        useGameStore.getState().setActiveMatchRoom(null);
-      }
-    };
-  }, [isMultiplayer]);
 
   // Subscribe to live Firestore match room for cross-device multiplayer
   useEffect(() => {

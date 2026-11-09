@@ -200,7 +200,7 @@ export const PrivateChatModal: React.FC = () => {
   if (!activePeer) return null;
 
   const handleLaunchGame = async (gameType: GameChallenge['gameType']) => {
-    if (!activePeer || !chatId || !authUser) return;
+    if (!activePeer || !chatId) return;
     const matchWager = 1000;
     if (player.stats.naira < matchWager) {
       sound.playPasan();
@@ -403,6 +403,22 @@ export const PrivateChatModal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                sound.playWalaahTap();
+                setOrganizingGame((prev) => !prev);
+              }}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                organizingGame
+                  ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-md'
+                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+              }`}
+              title="Organize 1v1 match with this classmate"
+            >
+              <Swords className="w-3.5 h-3.5 text-amber-400" />
+              <span>Challenge</span>
+            </button>
             <span className="hidden sm:flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-500/20">
               <Lock className="w-3 h-3" /> Private Chat
             </span>

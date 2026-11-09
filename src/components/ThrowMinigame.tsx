@@ -87,14 +87,6 @@ export const ThrowMinigame: React.FC<ThrowMinigameProps> = ({ onClose, initialMo
     winnerRef.current = winner;
   }, [p1Health, p2Health, turn, winner]);
 
-  // Clean room when leaving/unmounting
-  useEffect(() => {
-    return () => {
-      if (isMultiplayer) {
-        useGameStore.getState().setActiveMatchRoom(null);
-      }
-    };
-  }, [isMultiplayer]);
 
   // Firestore room sync
   useEffect(() => {

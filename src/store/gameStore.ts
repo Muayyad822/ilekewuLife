@@ -1142,21 +1142,19 @@ export const useGameStore = create<GameState>()(
         lastMoveAt: Date.now(),
       };
       const joinedRoom = await createOrJoinMatchRoom(fallbackRoom);
-      set({ activeMatchRoom: joinedRoom });
+      const targetTab = alert.gameType === 'quiz_duel' ? 'classroom' : 'compound';
+      set({
+        activeMatchRoom: joinedRoom,
+        activity: (alert.gameType as any) || 'ayo',
+        activeTab: targetTab,
+      });
+      return;
     }
-    if (alert.gameType === 'ayo') {
-      set({ activity: 'ayo', activeTab: 'compound' });
-    } else if (alert.gameType === 'tenten') {
-      set({ activity: 'tenten', activeTab: 'compound' });
-    } else if (alert.gameType === 'football') {
-      set({ activity: 'football', activeTab: 'compound' });
-    } else if (alert.gameType === 'throw') {
-      set({ activity: 'throw', activeTab: 'compound' });
-    } else if (alert.gameType === 'quiz_duel') {
-      set({ activity: 'quiz_duel', activeTab: 'classroom' });
-    } else {
-      set({ activeTab: 'classroom' });
-    }
+    const targetTab = alert.gameType === 'quiz_duel' ? 'classroom' : 'compound';
+    set({
+      activity: (alert.gameType as any) || 'ayo',
+      activeTab: targetTab,
+    });
   },
 
   organizeGameWithPeer: (peer, gameType, wager) => {
@@ -1248,7 +1246,6 @@ export const useGameStore = create<GameState>()(
     };
 
     createOrJoinMatchRoom(matchRoom);
-    set({ activeMatchRoom: matchRoom });
 
     const newChallenge: Omit<GameChallenge, 'id'> = {
       fromUid: authUser?.uid || player.id,
@@ -1279,22 +1276,15 @@ export const useGameStore = create<GameState>()(
       ...newChallenge,
       id: 'match_' + Date.now(),
     };
-    set({ challenges: [localChallenge, ...challenges] });
 
-    // Launch the selected interactive match immediately so players can play right away!
-    if (gameType === 'ayo') {
-      set({ activity: 'ayo', activeTab: 'compound' });
-    } else if (gameType === 'football') {
-      set({ activity: 'football', activeTab: 'compound' });
-    } else if (gameType === 'tenten') {
-      set({ activity: 'tenten', activeTab: 'compound' });
-    } else if (gameType === 'throw') {
-      set({ activity: 'throw', activeTab: 'compound' });
-    } else if (gameType === 'quiz_duel') {
-      set({ activity: 'quiz_duel', activeTab: 'classroom' });
-    } else {
-      set({ activeTab: 'classroom' });
-    }
+    // Atomically set activeMatchRoom, activity, and tab so minigames launch immediately without intermediate cards
+    const targetTab = gameType === 'quiz_duel' ? 'classroom' : 'compound';
+    set({
+      activeMatchRoom: matchRoom,
+      challenges: [localChallenge, ...challenges],
+      activity: gameType,
+      activeTab: targetTab,
+    });
 
     return {
       ok: true,

@@ -635,17 +635,17 @@ export const ActivityModal: React.FC = () => {
     setGameStarted(false);
   };
 
-  const isMinigame =
+  const isMinigameWithLauncher =
     activity === 'football' ||
     activity === 'throw' ||
     activity === 'ayo' ||
     activity === 'tenten' ||
-    activity === 'suwe' ||
-    activity === 'skipping' ||
-    activity === 'catcher' ||
     activity === 'quiz_duel';
 
-  if (isMinigame && !gameStarted && !activeMatchRoom) {
+  // If this minigame was already organized or joined as a direct peer match, start immediately without any intermediate launcher cards!
+  const isDirectPeerMatch = Boolean(activeMatchRoom && activeMatchRoom.gameType === activity);
+
+  if (isMinigameWithLauncher && !gameStarted && !isDirectPeerMatch) {
     return (
       <GameLauncherModal
         gameId={activity}

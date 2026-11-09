@@ -75,14 +75,6 @@ export const FootballMinigame: React.FC<{
     }
   }, [isMultiplayer, opponentName]);
 
-  // Clean room when leaving/unmounting
-  useEffect(() => {
-    return () => {
-      if (isMultiplayer) {
-        useGameStore.getState().setActiveMatchRoom(null);
-      }
-    };
-  }, [isMultiplayer]);
 
   // 1. Separate Firestore Room Subscription: Updates remoteDataRef and score/winner state WITHOUT restarting canvas animation
   useEffect(() => {
