@@ -199,6 +199,9 @@ export interface PrivateChatMessage {
   text?: string;
   audioUrl?: string;
   duration?: number;
+  gameType?: 'quiz_duel' | 'ayo' | 'football' | 'tenten' | 'throw';
+  roomId?: string;
+  wager?: number;
   createdAt: number;
 }
 

@@ -277,10 +277,8 @@ export async function sendPrivateChatMessage(
 ): Promise<string | null> {
   if (!db) return null;
   try {
-    const msgRef = await addDoc(
-      collection(db, 'chats', message.chatId, 'messages'),
-      message,
-    );
+    const msgRef = doc(collection(db, 'chats', message.chatId, 'messages'));
+    await setDoc(msgRef, message);
     // Update parent chat document with latest preview
     await setDoc(
       doc(db, 'chats', message.chatId),
@@ -294,7 +292,10 @@ export async function sendPrivateChatMessage(
       { merge: true },
     );
     return msgRef.id;
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'already-exists') {
+      return null;
+    }
     console.warn('Could not send private chat message:', err);
     return null;
   }

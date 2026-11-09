@@ -170,7 +170,7 @@ interface GameState {
     peer: OnlinePeer,
     gameType: GameChallenge['gameType'],
     wager: number,
-  ) => { ok: boolean; msg: string };
+  ) => { ok: boolean; msg: string; roomId?: string };
   setActiveMatchRoom: (room: MultiplayerMatchRoom | null) => void;
   openChatWithPeer: (peer: OnlinePeer) => void;
   closeChat: () => void;
@@ -1299,6 +1299,7 @@ export const useGameStore = create<GameState>()(
     return {
       ok: true,
       msg: `Match organized against ${peer.name}! Entering ${gameType.replace('_', ' ')} arena...`,
+      roomId,
     };
   },
 

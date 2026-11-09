@@ -775,33 +775,34 @@ export const ThrowMinigame: React.FC<ThrowMinigameProps> = ({ onClose, initialMo
   return (
     <div className="relative w-full max-w-xl mx-auto flex flex-col bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-sky-400/30">
       {/* Top Header / Dual Health Bar */}
-      <div className="bg-slate-950/90 px-4 py-3 border-b border-sky-500/20 flex flex-col gap-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 font-extrabold text-rose-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
-            <span>{isMultiplayer && !isPlayer1 ? opponentName : player.name} (Red)</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800">
-              🎯 Distance: {distance}m
+      <div className="bg-slate-950/90 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-sky-500/20 flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs gap-1.5">
+          {/* Player 1 (Red) */}
+          <div className="flex items-center gap-1.5 font-extrabold text-rose-400 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+            <span className="truncate max-w-[100px] sm:max-w-[170px]">
+              {isMultiplayer && !isPlayer1 ? opponentName : player.name}
             </span>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <span className="text-[10px] text-rose-300 font-bold shrink-0">({p1Health}%)</span>
           </div>
 
-          <div className="flex items-center gap-1.5 font-extrabold text-sky-400">
-            <span>{isMultiplayer && isPlayer1 ? opponentName : opponentName} (Blue)</span>
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+          {/* Centered Distance Badge */}
+          <span className="shrink-0 text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800 whitespace-nowrap">
+            🎯 {distance}m
+          </span>
+
+          {/* Player 2 (Blue) */}
+          <div className="flex items-center gap-1.5 font-extrabold text-sky-400 min-w-0 justify-end">
+            <span className="text-[10px] text-sky-300 font-bold shrink-0">({p2Health}%)</span>
+            <span className="truncate max-w-[100px] sm:max-w-[170px] text-right">
+              {opponentName}
+            </span>
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0" />
           </div>
         </div>
 
         {/* Dual Opposing Health Bar (Matches the game's exact aesthetic) */}
-        <div className="relative w-full h-5 bg-slate-800 rounded-full overflow-hidden flex items-center border border-white/20 shadow-inner">
+        <div className="relative w-full h-4 sm:h-5 bg-slate-800 rounded-full overflow-hidden flex items-center border border-white/20 shadow-inner">
           {/* Red Half (Left) */}
           <div className="w-1/2 h-full flex justify-end bg-slate-800">
             <div
@@ -811,7 +812,7 @@ export const ThrowMinigame: React.FC<ThrowMinigameProps> = ({ onClose, initialMo
           </div>
 
           {/* Center Crossed Swords Marker */}
-          <div className="absolute left-1/2 -translate-x-1/2 z-10 w-6 h-6 rounded-full bg-slate-900 border-2 border-white flex items-center justify-center text-[10px] shadow">
+          <div className="absolute left-1/2 -translate-x-1/2 z-10 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-slate-900 border-2 border-white flex items-center justify-center text-[9px] sm:text-[10px] shadow">
             ⚔️
           </div>
 
@@ -825,21 +826,21 @@ export const ThrowMinigame: React.FC<ThrowMinigameProps> = ({ onClose, initialMo
         </div>
       </div>
 
-      {/* Live Aim HUD (Force % and Angle ° as in the tutorial screenshot) */}
-      <div className="absolute top-20 left-4 z-20 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-sky-300 shadow-md flex items-center gap-3 text-xs">
-        <div>
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Force</div>
-          <div className="font-black text-slate-900 text-sm">{aimData.force}%</div>
-        </div>
-        <div className="w-px h-6 bg-slate-300" />
-        <div>
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Angle</div>
-          <div className="font-black text-slate-900 text-sm">{aimData.angle}°</div>
-        </div>
-      </div>
-
       {/* Main Game Canvas */}
-      <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] bg-sky-200">
+      <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] bg-sky-200 overflow-hidden">
+        {/* Live Aim HUD (Force % and Angle ° positioned neatly inside canvas sky) */}
+        <div className="absolute top-2.5 left-2.5 z-10 bg-white/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-sky-300 shadow-md flex items-center gap-2 sm:gap-3 text-xs pointer-events-none">
+          <div>
+            <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Force</div>
+            <div className="font-black text-slate-900 text-xs sm:text-sm">{aimData.force}%</div>
+          </div>
+          <div className="w-px h-5 sm:h-6 bg-slate-300" />
+          <div>
+            <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Angle</div>
+            <div className="font-black text-slate-900 text-xs sm:text-sm">{aimData.angle}°</div>
+          </div>
+        </div>
+
         <canvas
           ref={canvasRef}
           width={600}
@@ -851,21 +852,21 @@ export const ThrowMinigame: React.FC<ThrowMinigameProps> = ({ onClose, initialMo
         />
 
         {/* Status ticker pill */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-4 py-1.5 rounded-full text-white text-xs font-bold border border-white/20 shadow-lg pointer-events-none text-center whitespace-nowrap">
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-md px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-white text-[11px] sm:text-xs font-bold border border-white/20 shadow-lg pointer-events-none text-center max-w-[90%] truncate">
           {statusMsg}
         </div>
       </div>
 
       {/* Bottom Controls / Helper Bar */}
-      <div className="bg-slate-950 p-3 flex items-center justify-between gap-3 text-xs text-slate-400">
-        <div className="flex items-center gap-1.5">
-          <Crosshair className="w-4 h-4 text-amber-400" />
-          <span>Tap &amp; drag backwards to adjust trajectory. Release to throw!</span>
+      <div className="bg-slate-950 px-3 py-2 sm:py-2.5 flex items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-400">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Crosshair className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="truncate">Tap &amp; drag backwards to aim. Release to throw!</span>
         </div>
 
         <button
           onClick={handleRestart}
-          className="inline-flex items-center gap-1 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 cursor-pointer font-bold text-[11px]"
+          className="shrink-0 inline-flex items-center gap-1 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 cursor-pointer font-bold text-[11px]"
         >
           <RotateCcw className="w-3 h-3" /> Reset
         </button>

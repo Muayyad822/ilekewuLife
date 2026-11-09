@@ -589,10 +589,10 @@ export const FootballMinigame: React.FC<{
   }
 
   return (
-    <div className="p-4 flex flex-col items-center gap-3">
+    <div className="p-2 sm:p-4 flex flex-col items-center gap-2.5 sm:gap-3 w-full">
       {/* Scoreboard */}
-      <div className="w-full max-w-[360px] flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow-md">
-        <span className="text-sky-300">
+      <div className="w-full max-w-[360px] flex items-center justify-between bg-stone-900 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold shadow-md gap-2">
+        <span className="text-sky-300 truncate max-w-[110px] sm:max-w-none">
           {mode === 'online'
             ? isPlayer1
               ? `YOU (${player.name}): ${score.you}`
@@ -601,8 +601,8 @@ export const FootballMinigame: React.FC<{
             ? `P1 (Blue): ${score.you}`
             : `YOU (Blue): ${score.you}`}
         </span>
-        <span className="text-amber-300 font-mono text-[11px]">FIRST TO {WIN_GOALS}</span>
-        <span className="text-rose-400">
+        <span className="text-amber-300 font-mono text-[10px] sm:text-[11px] shrink-0">FIRST TO {WIN_GOALS}</span>
+        <span className="text-rose-400 truncate max-w-[110px] sm:max-w-none text-right">
           {mode === 'online'
             ? isPlayer1
               ? `${opponentName.toUpperCase()}: ${score.opp}`
@@ -614,9 +614,9 @@ export const FootballMinigame: React.FC<{
       </div>
 
       {banner && !winner && (
-        <div className="text-xs font-extrabold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 flex items-center gap-1.5 shadow-xs">
-          {mode === 'online' && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
-          <span>{banner}</span>
+        <div className="text-[11px] sm:text-xs font-extrabold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 flex items-center gap-1.5 shadow-xs max-w-[90%] truncate">
+          {mode === 'online' && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+          <span className="truncate">{banner}</span>
         </div>
       )}
 
@@ -626,7 +626,7 @@ export const FootballMinigame: React.FC<{
           ref={canvasRef}
           width={W}
           height={H}
-          style={{ width: 'min(84vw, 340px, calc(50dvh * 0.7826))', height: 'auto', aspectRatio: '360 / 460', touchAction: 'none' }}
+          style={{ width: 'min(90vw, 360px, calc(58dvh * 0.7826))', height: 'auto', aspectRatio: '360 / 460', touchAction: 'none' }}
           className="block cursor-ew-resize"
           onPointerDown={handlePointer}
           onPointerMove={handlePointer}

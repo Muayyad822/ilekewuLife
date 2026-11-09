@@ -954,30 +954,45 @@ export const ActivityModal: React.FC = () => {
     body = <CatcherGame onClose={close} />;
   }
 
+  const isGame = [
+    'throw',
+    'football',
+    'quiz_duel',
+    'tenten',
+    'suwe',
+    'ayo',
+    'skipping',
+    'catcher',
+  ].includes(activity || '');
+
   return (
     <div
-      className="absolute inset-0 z-20 flex items-end sm:items-center justify-center p-2 sm:p-3 bg-black/50 backdrop-blur-[2px]"
+      className="absolute inset-0 z-20 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm"
       style={{
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="kw-glass-strong kw-pop w-full max-w-2xl max-h-full flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-white/10">
-          <h2 className="kw-display text-base sm:text-lg font-extrabold text-kw-gold-soft flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-kw-gold" /> {title}
+      <div
+        className={`kw-glass-strong kw-pop w-full max-w-2xl flex flex-col overflow-hidden rounded-2xl sm:rounded-3xl shadow-2xl ${
+          isGame ? 'max-h-[96dvh] sm:max-h-[90vh]' : 'max-h-[92dvh] sm:max-h-[85vh]'
+        }`}
+      >
+        <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 border-b border-white/10 shrink-0">
+          <h2 className="kw-display text-sm sm:text-lg font-extrabold text-kw-gold-soft flex items-center gap-1.5 sm:gap-2 truncate">
+            <Sparkles className="w-4 h-4 text-kw-gold shrink-0" /> <span className="truncate">{title}</span>
           </h2>
           <button
             onClick={close}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer"
+            className="px-2.5 py-1 rounded-lg text-xs font-bold text-kw-cream-dim hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
           >
             ✕ Close
           </button>
         </div>
-        <div className="kw-scroll overflow-y-auto flex-1 bg-kw-cream text-stone-900">
+        <div className={`kw-scroll overflow-y-auto flex-1 bg-kw-cream text-stone-900 ${isGame ? 'p-1 sm:p-3' : ''}`}>
           {body}
         </div>
       </div>

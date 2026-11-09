@@ -9,7 +9,8 @@ import {
   uploadAudioFree,
   sendPeerInteractionToCloud,
 } from '@/lib/firebase';
-import { PrivateChatMessage } from '@/types/game';
+import { GameChallenge, PrivateChatMessage } from '@/types/game';
+import { GameLauncherModal } from '@/components/GameLauncherModal';
 import { sound } from '@/lib/audio';
 import {
   X,
@@ -25,7 +26,60 @@ import {
   Clock,
   CheckCheck,
   AlertCircle,
+  Swords,
+  Trophy,
+  Gamepad2,
 } from 'lucide-react';
+
+const DM_GAMES_LIST: {
+  id: GameChallenge['gameType'];
+  name: string;
+  subtitle: string;
+  emoji: string;
+  colorBorder: string;
+  colorBg: string;
+}[] = [
+  {
+    id: 'football',
+    name: 'Ping Pong',
+    subtitle: 'First to 3 goals shootout',
+    emoji: '⚽',
+    colorBorder: 'border-sky-500/40 hover:border-sky-400',
+    colorBg: 'bg-sky-950/40 hover:bg-sky-900/50',
+  },
+  {
+    id: 'ayo',
+    name: 'Ayo Olopon',
+    subtitle: 'Traditional seed capture',
+    emoji: '🪵',
+    colorBorder: 'border-amber-500/40 hover:border-amber-400',
+    colorBg: 'bg-amber-950/40 hover:bg-amber-900/50',
+  },
+  {
+    id: 'tenten',
+    name: 'Tinko-Tinko',
+    subtitle: 'Foot-clapping rhythm duel',
+    emoji: '👟',
+    colorBorder: 'border-rose-500/40 hover:border-rose-400',
+    colorBg: 'bg-rose-950/40 hover:bg-rose-900/50',
+  },
+  {
+    id: 'throw',
+    name: 'Snowball Duel',
+    subtitle: 'Trajectory artillery battle',
+    emoji: '❄️',
+    colorBorder: 'border-cyan-500/40 hover:border-cyan-400',
+    colorBg: 'bg-cyan-950/40 hover:bg-cyan-900/50',
+  },
+  {
+    id: 'quiz_duel',
+    name: 'Musabaqah Quiz',
+    subtitle: 'Tajweed & Nahw speed quiz',
+    emoji: '📖',
+    colorBorder: 'border-emerald-500/40 hover:border-emerald-400',
+    colorBg: 'bg-emerald-950/40 hover:bg-emerald-900/50',
+  },
+];
 
 interface AudioBubbleProps {
   url: string;
@@ -107,6 +161,8 @@ export const PrivateChatModal: React.FC = () => {
   const authUser = useGameStore((s) => s.authUser);
   const player = useGameStore((s) => s.player);
   const sendSalaamToPeer = useGameStore((s) => s.sendSalaamToPeer);
+  const organizeGameWithPeer = useGameStore((s) => s.organizeGameWithPeer);
+  const acceptIncomingChallenge = useGameStore((s) => s.acceptIncomingChallenge);
 
   const [messages, setMessages] = useState<PrivateChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -114,6 +170,9 @@ export const PrivateChatModal: React.FC = () => {
   const [recordDuration, setRecordDuration] = useState(0);
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [sending, setSending] = useState(false);
+  const [organizingGame, setOrganizingGame] = useState(false);
+  const [selectedGame, setSelectedGame] = useState<GameChallenge['gameType'] | null>(null);
+  const [organizeError, setOrganizeError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -140,10 +199,56 @@ export const PrivateChatModal: React.FC = () => {
 
   if (!activePeer) return null;
 
+  const handleLaunchGame = async (gameType: GameChallenge['gameType']) => {
+    if (!activePeer || !chatId || !authUser) return;
+    const matchWager = 1000;
+    if (player.stats.naira < matchWager) {
+      sound.playPasan();
+      setOrganizeError(`You need at least ₦${matchWager.toLocaleString()} to organize this match.`);
+      return;
+    }
+
+    const res = organizeGameWithPeer(activePeer, gameType, matchWager);
+    if (!res.ok) {
+      sound.playPasan();
+      setOrganizeError(res.msg);
+      return;
+    }
+
+    const gameLabels: Record<string, string> = {
+      football: 'Ping Pong ⚽',
+      ayo: 'Ayo Olopon 🪵',
+      tenten: 'Tinko-Tinko 👟',
+      throw: 'Snowball Duel ❄️',
+      quiz_duel: 'Musabaqah Quiz 📖',
+    };
+    const label = gameLabels[gameType] || gameType;
+
+    // Send the match challenge directly into this private chat
+    await sendPrivateChatMessage({
+      chatId,
+      senderUid: myUid,
+      senderName: player.name,
+      recipientUid: activePeer.uid,
+      recipientName: activePeer.name,
+      text: `⚔️ I organized a ${label} match for us (Prize: ₦${matchWager.toLocaleString()})! Waiting for you in the arena! 🏆`,
+      gameType,
+      roomId: res.roomId,
+      wager: matchWager,
+      createdAt: Date.now(),
+    });
+
+    setOrganizingGame(false);
+    setSelectedGame(null);
+    closeChat();
+  };
+
   const handleSendMessage = async (textToSend?: string) => {
+    if (sending) return;
     const content = (textToSend !== undefined ? textToSend : inputText).trim();
     if (!content || !chatId || !authUser) return;
 
+    setInputText('');
     setSending(true);
     sound.playWalaahTap();
 
@@ -167,8 +272,6 @@ export const PrivateChatModal: React.FC = () => {
         message: `💬 ${player.name}: "${content.length > 40 ? content.slice(0, 37) + '...' : content}"`,
         createdAt: Date.now(),
       });
-
-      setInputText('');
     } catch (err) {
       console.warn('Failed to send text message:', err);
     } finally {
@@ -349,10 +452,13 @@ export const PrivateChatModal: React.FC = () => {
                     📖 Ask about Hifz
                   </button>
                   <button
-                    onClick={() => handleSendMessage('Are you ready for our Nahw duel? ⚔️')}
-                    className="py-1.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold border border-white/10 cursor-pointer transition"
+                    onClick={() => {
+                      sound.playWalaahTap();
+                      setOrganizingGame(true);
+                    }}
+                    className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition"
                   >
-                    ⚔️ Duel Challenge
+                    <Swords className="w-3.5 h-3.5" /> ⚔️ Organize Game
                   </button>
                 </div>
               )}
@@ -360,25 +466,86 @@ export const PrivateChatModal: React.FC = () => {
           ) : (
             messages.map((msg) => {
               const isMe = msg.senderUid === myUid;
+              const isMatchInvite = Boolean(msg.gameType && msg.roomId);
+              const matchedGame = DM_GAMES_LIST.find((g) => g.id === msg.gameType);
+
               return (
                 <div
                   key={msg.id}
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
                 >
                   <div
-                    className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 shadow-md ${
-                      isMe
+                    className={`max-w-[88%] sm:max-w-[78%] rounded-2xl px-3.5 py-2.5 shadow-md ${
+                      isMatchInvite
+                        ? 'bg-gradient-to-br from-amber-950/90 via-stone-900 to-amber-950/70 border-2 border-amber-500/50 text-white'
+                        : isMe
                         ? 'bg-emerald-600 text-white rounded-br-none'
                         : 'bg-stone-800 border border-white/10 text-stone-100 rounded-bl-none'
                     }`}
                   >
-                    {msg.text && (
-                      <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed break-words">
-                        {msg.text}
-                      </p>
-                    )}
-                    {msg.audioUrl && (
-                      <AudioBubble url={msg.audioUrl} isMe={isMe} />
+                    {isMatchInvite ? (
+                      <div className="space-y-2.5 py-0.5">
+                        <div className="flex items-center justify-between gap-2 border-b border-amber-500/20 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{matchedGame?.emoji || '⚔️'}</span>
+                            <div>
+                              <div className="text-xs font-extrabold text-amber-300 flex items-center gap-1">
+                                {matchedGame?.name || 'Live Match Duel'}
+                              </div>
+                              <div className="text-[10px] text-amber-200/70">
+                                ₦{(msg.wager || 1000).toLocaleString()} Match Prize Pot
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Live Duel
+                          </span>
+                        </div>
+
+                        {msg.text && (
+                          <p className="text-xs text-stone-200 leading-relaxed">
+                            {msg.text}
+                          </p>
+                        )}
+
+                        {!isMe ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sound.playCoin();
+                              acceptIncomingChallenge({
+                                id: msg.roomId!,
+                                type: 'duel_invite',
+                                gameType: msg.gameType,
+                                roomId: msg.roomId,
+                                fromUid: msg.senderUid,
+                                fromName: msg.senderName,
+                              });
+                              closeChat();
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-stone-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition active:scale-[0.98]"
+                          >
+                            <Swords className="w-3.5 h-3.5" />
+                            <span>Accept &amp; Enter Arena!</span>
+                          </button>
+                        ) : (
+                          <div className="text-[10px] text-amber-300/80 font-semibold flex items-center gap-1.5 pt-0.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                            <span>You created this match · Room active</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {msg.text && (
+                          <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed break-words">
+                            {msg.text}
+                          </p>
+                        )}
+                        {msg.audioUrl && (
+                          <AudioBubble url={msg.audioUrl} isMe={isMe} />
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="flex items-center gap-1 px-1 text-[10px] text-stone-400">
@@ -409,10 +576,17 @@ export const PrivateChatModal: React.FC = () => {
               📿 Send Barakah
             </button>
             <button
-              onClick={() => handleSendMessage('Check your noticeboard for a game challenge! 🏆')}
-              className="shrink-0 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 border border-white/10 cursor-pointer transition"
+              onClick={() => {
+                sound.playWalaahTap();
+                setOrganizingGame((prev) => !prev);
+              }}
+              className={`shrink-0 px-2.5 py-1 rounded-lg border font-bold flex items-center gap-1 cursor-pointer transition ${
+                organizingGame
+                  ? 'bg-amber-500 text-stone-950 border-amber-400'
+                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+              }`}
             >
-              🏆 Challenge
+              <Trophy className="w-3 h-3 text-amber-400" /> Challenge
             </button>
           </div>
         )}
@@ -450,6 +624,77 @@ export const PrivateChatModal: React.FC = () => {
           <div className="px-4 py-2 bg-emerald-950/60 border-t border-emerald-500/20 flex items-center justify-center gap-2 text-xs text-emerald-300 font-bold">
             <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
             <span>Sending voice broadcast to scholar...</span>
+          </div>
+        )}
+
+        {/* Live Game Organizer Panel for this peer */}
+        {organizingGame && (
+          <div className="border-t border-amber-500/30 bg-stone-950/95 p-3.5 space-y-2.5 animate-in slide-in-from-bottom-2 duration-200 shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <Gamepad2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                    Organize Match vs. {activePeer.name}
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      ₦1,000 Pot
+                    </span>
+                  </h4>
+                  <p className="text-[10px] text-stone-400">Select a game to challenge {activePeer.name} in real time:</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrganizingGame(false);
+                  setSelectedGame(null);
+                  setOrganizeError(null);
+                }}
+                className="text-stone-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-xs font-bold cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {organizeError && (
+              <div className="p-2 rounded-xl bg-red-950/70 border border-red-500/40 text-red-200 text-xs font-semibold flex items-center justify-between">
+                <span>{organizeError}</span>
+                <button
+                  type="button"
+                  onClick={() => setOrganizeError(null)}
+                  className="text-red-300 hover:text-white ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
+              {DM_GAMES_LIST.map((game) => (
+                <button
+                  key={game.id}
+                  type="button"
+                  onClick={() => {
+                    sound.playWalaahTap();
+                    setSelectedGame(game.id);
+                  }}
+                  className={`p-2.5 rounded-xl border ${game.colorBorder} ${game.colorBg} text-left flex items-center justify-between gap-2 cursor-pointer transition hover:scale-[1.01] active:scale-[0.99] shadow-xs`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-lg shrink-0">{game.emoji}</span>
+                    <div className="truncate">
+                      <div className="text-xs font-extrabold text-white truncate">{game.name}</div>
+                      <div className="text-[10px] text-stone-400 truncate">{game.subtitle}</div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black text-amber-300 shrink-0 bg-black/40 px-2 py-0.5 rounded-lg border border-white/5">
+                    ₦1,000
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -501,6 +746,21 @@ export const PrivateChatModal: React.FC = () => {
           </form>
         </div>
       </div>
+
+      {/* Game Launcher Modal overlay when a specific game is chosen */}
+      {selectedGame && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <GameLauncherModal
+            gameId={selectedGame}
+            targetPeer={activePeer}
+            onPlayBot={() => {}}
+            onPlayFriend={() => {
+              handleLaunchGame(selectedGame);
+            }}
+            onBack={() => setSelectedGame(null)}
+          />
+        </div>
+      )}
     </div>
   );
 };

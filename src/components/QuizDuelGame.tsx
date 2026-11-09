@@ -245,22 +245,22 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
         {/* Live Head-to-Head Scoreboard */}
         <div className="grid grid-cols-2 gap-2 pt-1">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-extrabold uppercase text-emerald-400">YOU ({player.name})</div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 flex items-center justify-between min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-extrabold uppercase text-emerald-400 truncate">YOU ({player.name})</div>
               <div className="text-xl font-black text-white">{myScore} <span className="text-xs font-normal text-stone-400">pts</span></div>
             </div>
-            <div className="text-xs font-bold text-stone-400">
+            <div className="text-xs font-bold text-stone-400 shrink-0 ml-1.5">
               {Object.keys(myAnswers).length}/5 Qs
             </div>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-extrabold uppercase text-amber-400">{opponentName}</div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 flex items-center justify-between min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-extrabold uppercase text-amber-400 truncate">{opponentName}</div>
               <div className="text-xl font-black text-white">{oppScore} <span className="text-xs font-normal text-stone-400">pts</span></div>
             </div>
-            <div className="text-xs font-bold text-stone-400">
+            <div className="text-xs font-bold text-stone-400 shrink-0 ml-1.5">
               {oppFinished ? 'Done ✓' : 'Competing...'}
             </div>
           </div>
@@ -268,7 +268,7 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
       </div>
 
       {!gameOver ? (
-        <div className="bg-white border-2 border-stone-200 rounded-2xl p-5 space-y-4 shadow-sm">
+        <div className="bg-white border-2 border-stone-200 rounded-2xl p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-sm">
           {/* Question Header & Countdown */}
           <div className="flex items-center justify-between border-b border-stone-100 pb-3">
             <span className="text-xs font-bold text-stone-500">

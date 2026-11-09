@@ -55,13 +55,13 @@ const ResultCard: React.FC<{
 );
 
 const GameHeader: React.FC<{ title: string; subtitle: string; badge?: string }> = ({ title, subtitle, badge }) => (
-  <div className="flex items-start justify-between gap-3 border-b border-stone-200 pb-3">
-    <div>
-      <h3 className="font-extrabold text-base text-stone-900">{title}</h3>
-      <p className="text-xs text-stone-500">{subtitle}</p>
+  <div className="flex items-start justify-between gap-2 border-b border-stone-200 pb-2.5">
+    <div className="min-w-0 flex-1">
+      <h3 className="font-extrabold text-sm sm:text-base text-stone-900 truncate">{title}</h3>
+      <p className="text-[11px] sm:text-xs text-stone-500 line-clamp-2">{subtitle}</p>
     </div>
     {badge && (
-      <span className="shrink-0 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900">
+      <span className="shrink-0 text-[10px] sm:text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 whitespace-nowrap">
         {badge}
       </span>
     )}
@@ -324,17 +324,17 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const won = you >= TENTEN_TARGET;
 
   return (
-    <div className="p-5 space-y-4 relative">
+    <div className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 relative">
       <GameHeader
         title="👯 Tinko-Tinko — Foot-Clapping Duel"
         subtitle="Clap the rhythm, then show Left or Right foot before the bar runs out!"
         badge={isMultiplayer ? `1v1 Match · ₦1,000 Pot` : 'Win ₦600'}
       />
 
-      <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
-        <span className="text-sky-300">YOU: {you}</span>
-        <span className="text-amber-300">FIRST TO {TENTEN_TARGET}</span>
-        <span className="text-rose-300">{opponentName.toUpperCase()}: {her}</span>
+      <div className="flex items-center justify-between bg-stone-900 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold gap-2">
+        <span className="text-sky-300 truncate max-w-[110px] sm:max-w-none">YOU: {you}</span>
+        <span className="text-amber-300 font-mono text-[10px] sm:text-xs shrink-0">FIRST TO {TENTEN_TARGET}</span>
+        <span className="text-rose-300 truncate max-w-[110px] sm:max-w-none text-right">{opponentName.toUpperCase()}: {her}</span>
       </div>
 
       <div
@@ -378,19 +378,19 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 pt-1">
         {(['L', 'R'] as Foot[]).map((f) => (
           <button
             key={f}
             disabled={phase !== 'pick' || Boolean(myPick)}
             onClick={() => resolve(f)}
-            className={`py-5 rounded-2xl border-2 font-extrabold text-stone-900 cursor-pointer text-sm transition ${
+            className={`py-5 sm:py-7 rounded-2xl border-2 font-extrabold text-stone-900 cursor-pointer text-sm transition ${
               myPick === f
                 ? 'border-emerald-500 bg-emerald-100 ring-4 ring-emerald-300'
                 : 'border-sky-500 bg-sky-50 hover:bg-sky-100 disabled:opacity-50'
             }`}
           >
-            <div className="text-3xl mb-1">{f === 'L' ? '🦶' : '🦶'}</div>
+            <div className="text-3xl mb-1.5">{f === 'L' ? '🦶' : '🦶'}</div>
             {f === 'L' ? 'Left Foot' : 'Right Foot'}
           </button>
         ))}
@@ -541,9 +541,9 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   };
 
   return (
-    <div className="p-5 space-y-4 relative">
+    <div className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 relative">
       <GameHeader
-        title="🪨 Suwe"
+        title="🪨 Suwe — Nigerian Hopscotch"
         subtitle="Toss your stone into the right box, then hop the grid in order without stepping on its box."
         badge={`Win up to ₦${SUWE_ROUNDS * 180}`}
       />
@@ -557,7 +557,7 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
 
       <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{msg}</div>
 
-      <div className="grid grid-cols-6 gap-1.5">
+      <div className="grid grid-cols-6 gap-1.5 pt-1">
         {Array.from({ length: BOXES }, (_, i) => i + 1).map((n) => {
           const isStone = n === target;
           const hopDone = stage === 'hop' && seq.indexOf(n) !== -1 && seq.indexOf(n) < hopIdx;
@@ -567,7 +567,7 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
               key={n}
               disabled={stage !== 'hop'}
               onClick={() => hop(n)}
-              className={`h-16 rounded-lg border-2 font-extrabold text-lg cursor-pointer transition ${
+              className={`h-18 sm:h-22 rounded-xl border-2 font-extrabold text-lg sm:text-xl cursor-pointer transition flex items-center justify-center ${
                 isStone
                   ? 'bg-stone-300 border-stone-500 text-stone-700'
                   : hopDone
@@ -584,8 +584,8 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       </div>
 
       {stage === 'toss' && (
-        <div className="space-y-2">
-          <div className="relative h-8 rounded-full overflow-hidden border border-stone-300 bg-stone-100">
+        <div className="space-y-2 pt-1">
+          <div className="relative h-9 rounded-full overflow-hidden border border-stone-300 bg-stone-100">
             <div className="absolute inset-0 grid grid-cols-6">
               {Array.from({ length: BOXES }, (_, i) => (
                 <div
@@ -598,7 +598,7 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
           </div>
           <button
             onClick={toss}
-            className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-sm cursor-pointer"
+            className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-sm cursor-pointer shadow-sm transition"
           >
             Toss the stone into box {target}!
           </button>
@@ -909,17 +909,17 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   };
 
   return (
-    <div className="p-5 space-y-4 relative">
+    <div className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 relative">
       <GameHeader
         title="🪵 Ayo Olopon — Yoruba Mancala"
         subtitle={`Sow seeds anticlockwise. Land in a pit that makes 2 or 3 seeds to capture it. First to ${AYO_TARGET} wins.`}
         badge={isMultiplayer ? `1v1 Match · ₦1,000 Pot` : 'Win ₦800'}
       />
 
-      <div className="flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow-md">
-        <span className="text-amber-300">{player.name} (YOU): {g.you}</span>
-        <span className="text-stone-300">{g.turn === 'you' ? '🟢 Your Move' : `⏳ ${opponentName} is moving…`}</span>
-        <span className="text-stone-200">{opponentName.toUpperCase()}: {g.ai}</span>
+      <div className="flex items-center justify-between bg-stone-900 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold shadow-md gap-2">
+        <span className="text-amber-300 truncate max-w-[110px] sm:max-w-none">{player.name} (YOU): {g.you}</span>
+        <span className="text-stone-300 shrink-0 text-[10px] sm:text-xs">{g.turn === 'you' ? '🟢 Your Move' : `⏳ ${opponentName} moving…`}</span>
+        <span className="text-stone-200 truncate max-w-[110px] sm:max-w-none text-right">{opponentName.toUpperCase()}: {g.ai}</span>
       </div>
 
       <div className="rounded-2xl bg-amber-900 p-2 sm:p-3 space-y-1.5 sm:space-y-2 shadow-inner">
@@ -1209,12 +1209,12 @@ const SkippingInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const won = streak >= SKIP_GOAL;
 
   return (
-    <div className="p-3 sm:p-4 max-w-sm mx-auto flex flex-col items-center gap-2.5">
+    <div className="p-2 sm:p-4 max-w-md w-full mx-auto flex flex-col items-center gap-2.5 sm:gap-3">
       {/* Compact Scorebar */}
-      <div className="w-full flex items-center justify-between bg-stone-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm">
-        <span className="text-amber-300">Streak: {streak}/{SKIP_GOAL}</span>
-        <span className="text-[11px] font-mono text-stone-300">₦35 / jump</span>
-        <span>{'❤️'.repeat(Math.max(0, lives))}</span>
+      <div className="w-full flex items-center justify-between bg-stone-900 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-sm gap-2">
+        <span className="text-amber-300 font-bold">Streak: {streak}/{SKIP_GOAL}</span>
+        <span className="text-[11px] font-mono text-stone-300 shrink-0">₦35 / jump</span>
+        <span className="shrink-0">{'❤️'.repeat(Math.max(0, lives))}</span>
       </div>
 
       {/* Canvas Area with Responsive Max-Height */}
@@ -1224,8 +1224,7 @@ const SkippingInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
           width={SKIP_W}
           height={SKIP_H}
           style={{
-            width: '100%',
-            maxWidth: '360px',
+            width: 'min(92vw, 400px, calc(56dvh * 1.38))',
             height: 'auto',
             aspectRatio: '360 / 260',
             touchAction: 'none',
@@ -1522,7 +1521,7 @@ const CatcherInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   }, [reward]);
 
   return (
-    <div className="p-4 flex flex-col items-center gap-3">
+    <div className="p-2 sm:p-4 flex flex-col items-center gap-2.5 sm:gap-3 w-full">
       <div className="w-full max-w-[360px]">
         <GameHeader
           title="🏃 Boju-Boju"
@@ -1530,9 +1529,9 @@ const CatcherInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
           badge="₦50 per sweet"
         />
       </div>
-      <div className="w-full max-w-[360px] flex items-center justify-between bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold">
+      <div className="w-full max-w-[360px] flex items-center justify-between bg-stone-900 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold gap-2">
         <span className="text-amber-300">🍬 {score}</span>
-        <span className="font-mono">⏱ {timeLeft}s</span>
+        <span className="font-mono text-[11px]">⏱ {timeLeft}s</span>
         <span>{'❤️'.repeat(Math.max(0, lives))}</span>
       </div>
       <div className="relative rounded-2xl overflow-hidden shadow-lg border-4 border-stone-800">
@@ -1540,7 +1539,7 @@ const CatcherInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
           ref={canvasRef}
           width={CT_W}
           height={CT_H}
-          style={{ width: 'min(84vw, 340px, calc(50dvh * 0.857))', height: 'auto', aspectRatio: '360 / 420', touchAction: 'none' }}
+          style={{ width: 'min(90vw, 360px, calc(58dvh * 0.857))', height: 'auto', aspectRatio: '360 / 420', touchAction: 'none' }}
           className="block"
         />
         {done && (
