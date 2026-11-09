@@ -246,6 +246,7 @@ export const PrivateChatModal: React.FC = () => {
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
     }
     setIsRecording(false);
   };

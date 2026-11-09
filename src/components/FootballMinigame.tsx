@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
 import { subscribeMatchRoom, syncMatchRoomMove, publishMinbarPostToCloud } from '@/lib/firebase';
-import { Trophy, Play, RotateCcw, Swords, Users } from 'lucide-react';
+import { Trophy, Play, RotateCcw, Users } from 'lucide-react';
 
 const W = 360;
 const H = 460;
@@ -48,6 +48,22 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
   const lastSyncRef = useRef<number>(0);
   const rewarded = useRef(false);
 
+  // Store activeMatchRoom in ref to avoid recreating loops
+  const activeMatchRoomRef = useRef(activeMatchRoom);
+  useEffect(() => {
+    activeMatchRoomRef.current = activeMatchRoom;
+  }, [activeMatchRoom]);
+
+  // Remote network data received from opponent
+  const remoteDataRef = useRef<{
+    ball?: { x: number; y: number; vx: number; vy: number };
+    p1X?: number;
+    p2X?: number;
+    p1Score?: number;
+    p2Score?: number;
+    msg?: string;
+  }>({});
+
   // If match room exists, enter online mode immediately
   useEffect(() => {
     if (isMultiplayer) {
@@ -55,6 +71,68 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
       setBanner(`LIVE 1v1 MATCH vs ${opponentName.toUpperCase()}!`);
     }
   }, [isMultiplayer, opponentName]);
+
+  // Clean room when leaving/unmounting
+  useEffect(() => {
+    return () => {
+      if (isMultiplayer) {
+        useGameStore.getState().setActiveMatchRoom(null);
+      }
+    };
+  }, [isMultiplayer]);
+
+  // 1. Separate Firestore Room Subscription: Updates remoteDataRef and score/winner state WITHOUT restarting canvas animation
+  useEffect(() => {
+    if (!isOnline || !activeMatchRoom?.id) return;
+
+    const unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
+      if (!room || !room.state) return;
+      const st = room.state;
+
+      remoteDataRef.current = {
+        ball: st.ball,
+        p1X: st.p1X,
+        p2X: st.p2X,
+        p1Score: st.p1Score,
+        p2Score: st.p2Score,
+        msg: st.msg,
+      };
+
+      const serverP1Score = st.p1Score ?? 0;
+      const serverP2Score = st.p2Score ?? 0;
+
+      setScore({
+        you: isPlayer1 ? serverP1Score : serverP2Score,
+        opp: isPlayer1 ? serverP2Score : serverP1Score,
+      });
+
+      if (st.msg) setBanner(st.msg);
+
+      if (room.winnerUid && !rewarded.current) {
+        rewarded.current = true;
+        if (room.winnerUid === myUid) {
+          setWinner('you');
+          reward(
+            { naira: 1000, pasanResistance: 6, barakah: 5, energy: -4 },
+            `🏆 Won 1v1 Table Soccer match against ${opponentName} (${isPlayer1 ? serverP1Score : serverP2Score}-${isPlayer1 ? serverP2Score : serverP1Score})! Claimed ₦1,000 prize pot!`,
+          );
+          publishMinbarPostToCloud({
+            authorName: player.name,
+            authorStage: player.stage,
+            text: `⚽🏆 Alhamdulillah! Just defeated ${opponentName} in a live 1v1 Table Soccer match (${isPlayer1 ? serverP1Score : serverP2Score} vs ${isPlayer1 ? serverP2Score : serverP1Score}) and won the ₦1,000 prize pot! 📿`,
+            likes: 3,
+            takbeers: 6,
+            timestamp: Date.now(),
+          });
+        } else {
+          setWinner('opp');
+          reward({ pasanResistance: 2, energy: -3 }, `Played 1v1 Table Soccer against ${opponentName}. Great effort!`);
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [isOnline, activeMatchRoom?.id, isPlayer1, myUid, opponentName, player.name, player.stage, reward]);
 
   const startMatch = (kind: 'friendly' | 'cup' | 'twoplayer') => {
     sound.playWalaahTap();
@@ -64,9 +142,9 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
     setMode(kind);
   };
 
-  // Main game loop (Physics on Player 1 / Solo, sync over Firestore for Player 2)
+  // 2. Main game loop: Runs continuously at 60fps without being restarted by network messages
   useEffect(() => {
-    if (mode === 'menu' || winner) return;
+    if (mode === 'menu') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -103,64 +181,6 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
       ball.vy = (towardP1 ? 1 : -1) * Math.cos(angle) * spd;
       freezeUntil = performance.now() + 850;
     };
-
-    // Listen to Firestore match room in online multiplayer
-    let unsub: (() => void) | null = null;
-    if (isOnline && activeMatchRoom) {
-      unsub = subscribeMatchRoom(activeMatchRoom.id, (room) => {
-        if (!room || !room.state) return;
-        setActiveMatchRoom(room);
-        const st = room.state;
-
-        if (!isPlayer1) {
-          // Player 2 receives authoritative ball & p1 position from Player 1
-          if (st.ball) {
-            ball.x = st.ball.x;
-            ball.y = st.ball.y;
-            ball.vx = st.ball.vx;
-            ball.vy = st.ball.vy;
-          }
-          if (st.p1X !== undefined) p1X = st.p1X;
-        } else {
-          // Player 1 receives Player 2 paddle position
-          if (st.p2X !== undefined) p2X = st.p2X;
-        }
-
-        const serverP1Score = st.p1Score ?? 0;
-        const serverP2Score = st.p2Score ?? 0;
-        p1Score = serverP1Score;
-        p2Score = serverP2Score;
-
-        setScore({
-          you: isPlayer1 ? serverP1Score : serverP2Score,
-          opp: isPlayer1 ? serverP2Score : serverP1Score,
-        });
-
-        if (st.msg) setBanner(st.msg);
-
-        if (room.winnerUid && !rewarded.current) {
-          rewarded.current = true;
-          if (room.winnerUid === myUid) {
-            setWinner('you');
-            reward(
-              { naira: 1000, pasanResistance: 6, barakah: 5, energy: -4 },
-              `🏆 Won 1v1 Table Soccer match against ${opponentName} (${isPlayer1 ? serverP1Score : serverP2Score}-${isPlayer1 ? serverP2Score : serverP1Score})! Claimed ₦1,000 prize pot!`,
-            );
-            publishMinbarPostToCloud({
-              authorName: player.name,
-              authorStage: player.stage,
-              text: `⚽🏆 Alhamdulillah! Just defeated ${opponentName} in a live 1v1 Table Soccer match (${isPlayer1 ? serverP1Score : serverP2Score} vs ${isPlayer1 ? serverP2Score : serverP1Score}) and won the ₦1,000 prize pot! 📿`,
-              likes: 3,
-              takbeers: 6,
-              timestamp: Date.now(),
-            });
-          } else {
-            setWinner('opp');
-            reward({ pasanResistance: 2, energy: -3 }, `Played 1v1 Table Soccer against ${opponentName}. Great effort!`);
-          }
-        }
-      });
-    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (mode === 'twoplayer') {
@@ -216,27 +236,49 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
       const dt = Math.min(0.035, (now - last) / 1000);
       last = now;
 
-      // Handle local input
+      // Local keyboard direction
       const keyDir = (keysRef.current.right ? 1 : 0) - (keysRef.current.left ? 1 : 0);
       if (keyDir !== 0) {
         inputXRef.current = Math.max(40, Math.min(W - 40, inputXRef.current + keyDir * 290 * dt));
       }
 
+      const curRoom = activeMatchRoomRef.current;
+
       if (isOnline) {
         if (isPlayer1) {
+          // Player 1 controls bottom paddle (p1X)
           p1X += (inputXRef.current - p1X) * Math.min(1, dt * 18);
           p1X = Math.max(40, Math.min(W - 40, p1X));
+
+          // Read remote Player 2 paddle
+          const remoteP2X = remoteDataRef.current.p2X;
+          if (remoteP2X !== undefined) {
+            p2X += (remoteP2X - p2X) * Math.min(1, dt * 14);
+            p2X = Math.max(40, Math.min(W - 40, p2X));
+          }
         } else {
+          // Player 2 controls top paddle (p2X)
           p2X += (inputXRef.current - p2X) * Math.min(1, dt * 18);
           p2X = Math.max(40, Math.min(W - 40, p2X));
 
-          // Player 2 broadcasts paddle position to Player 1
-          if (now - lastSyncRef.current > 70 && activeMatchRoom) {
+          // Read remote Player 1 paddle
+          const remoteP1X = remoteDataRef.current.p1X;
+          if (remoteP1X !== undefined) {
+            p1X += (remoteP1X - p1X) * Math.min(1, dt * 14);
+            p1X = Math.max(40, Math.min(W - 40, p1X));
+          }
+
+          // Player 2 broadcasts paddle position every 350ms
+          if (now - lastSyncRef.current > 350 && curRoom) {
             lastSyncRef.current = now;
-            syncMatchRoomMove(activeMatchRoom.id, {
-              ...activeMatchRoom.state,
-              p2X,
-            }, 'player1');
+            syncMatchRoomMove(
+              curRoom.id,
+              {
+                ...curRoom.state,
+                p2X: Math.round(p2X),
+              },
+              'player1',
+            );
           }
         }
       } else if (mode === 'twoplayer') {
@@ -262,125 +304,138 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
         p2X = Math.max(40, Math.min(W - 40, p2X));
       }
 
-      // Ball Physics Simulation (Run by Player 1 in online, or locally in solo)
+      // Ball Physics Simulation
       const isSimulationHost = !isOnline || isPlayer1;
 
-      if (isSimulationHost && now >= freezeUntil) {
+      if (isSimulationHost) {
+        if (now >= freezeUntil) {
+          ball.x += ball.vx * dt;
+          ball.y += ball.vy * dt;
+
+          // Side wall bounce
+          if (ball.x - BALL_R < 14) {
+            ball.x = 14 + BALL_R;
+            ball.vx = Math.abs(ball.vx);
+            sound.playWalaahTap();
+          } else if (ball.x + BALL_R > W - 14) {
+            ball.x = W - 14 - BALL_R;
+            ball.vx = -Math.abs(ball.vx);
+            sound.playWalaahTap();
+          }
+
+          // Top wall / Goal (Player 1 scores on Player 2's net)
+          if (ball.y - BALL_R < 14) {
+            if (ball.x > GOAL_LEFT && ball.x < GOAL_RIGHT) {
+              p1Score += 1;
+              sound.playTakbeer();
+              const goalBanner = `⚽ GOAL BY ${isOnline ? curRoom?.player1Name || 'YOU' : 'YOU'}!`;
+              setBanner(goalBanner);
+              resetBall(true);
+
+              if (isOnline && curRoom) {
+                const won = p1Score >= WIN_GOALS;
+                syncMatchRoomMove(
+                  curRoom.id,
+                  {
+                    ...curRoom.state,
+                    ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: Math.round(ball.vx), vy: Math.round(ball.vy) },
+                    p1X: Math.round(p1X),
+                    p1Score,
+                    p2Score,
+                    msg: goalBanner,
+                  },
+                  'player1',
+                  won ? curRoom.player1Uid : undefined,
+                );
+              } else {
+                setScore({ you: p1Score, opp: p2Score });
+                if (p1Score >= WIN_GOALS) {
+                  setWinner('you');
+                  const prize = isCup ? 1200 : mode === 'twoplayer' ? 1000 : 500;
+                  reward({ naira: prize, pasanResistance: 4, barakah: 3 }, `Defeated Ridwan ${p1Score}-${p2Score}!`);
+                  return;
+                }
+              }
+            } else {
+              ball.y = 14 + BALL_R;
+              ball.vy = Math.abs(ball.vy);
+              sound.playWalaahTap();
+            }
+          }
+
+          // Bottom wall / Goal (Player 2 / AI scores on Player 1's net)
+          if (ball.y + BALL_R > H - 14) {
+            if (ball.x > GOAL_LEFT && ball.x < GOAL_RIGHT) {
+              p2Score += 1;
+              sound.playPasan();
+              const goalBanner = `⚽ GOAL BY ${isOnline ? curRoom?.player2Name || 'OPPONENT' : 'RIDWAN'}!`;
+              setBanner(goalBanner);
+              resetBall(false);
+
+              if (isOnline && curRoom) {
+                const won = p2Score >= WIN_GOALS;
+                syncMatchRoomMove(
+                  curRoom.id,
+                  {
+                    ...curRoom.state,
+                    ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: Math.round(ball.vx), vy: Math.round(ball.vy) },
+                    p1X: Math.round(p1X),
+                    p1Score,
+                    p2Score,
+                    msg: goalBanner,
+                  },
+                  'player1',
+                  won ? curRoom.player2Uid : undefined,
+                );
+              } else {
+                setScore({ you: p1Score, opp: p2Score });
+                if (p2Score >= WIN_GOALS) {
+                  setWinner('opp');
+                  reward({ pasanResistance: 2 }, `Played match against Captain Ridwan (${p1Score}-${p2Score}).`);
+                  return;
+                }
+              }
+            } else {
+              ball.y = H - 14 - BALL_R;
+              ball.vy = -Math.abs(ball.vy);
+              sound.playWalaahTap();
+            }
+          }
+
+          // Paddle collisions
+          checkPaddleHit(p1X, H - 34, GOALIE_W, true);
+          if (ball.vy > 0) checkPaddleHit(p1X, H * 0.64, STRIKER_W, true);
+
+          checkPaddleHit(p2X, 34, GOALIE_W, false);
+          if (ball.vy < 0) checkPaddleHit(p2X, H * 0.36, STRIKER_W, false);
+
+          // Player 1 broadcasts authoritative physics at ~2.5 Hz (380ms)
+          if (isOnline && curRoom && now - lastSyncRef.current > 380) {
+            lastSyncRef.current = now;
+            syncMatchRoomMove(
+              curRoom.id,
+              {
+                ...curRoom.state,
+                ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: Math.round(ball.vx), vy: Math.round(ball.vy) },
+                p1X: Math.round(p1X),
+                p1Score,
+                p2Score,
+              },
+              'player1',
+            );
+          }
+        }
+      } else {
+        // Player 2 client: Extrapolates ball locally and lerps toward authoritative server ball
+        const remoteBall = remoteDataRef.current.ball;
+        if (remoteBall) {
+          ball.x += (remoteBall.x - ball.x) * Math.min(1, dt * 7);
+          ball.y += (remoteBall.y - ball.y) * Math.min(1, dt * 7);
+          ball.vx = remoteBall.vx;
+          ball.vy = remoteBall.vy;
+        }
         ball.x += ball.vx * dt;
         ball.y += ball.vy * dt;
-
-        // Side wall bounce
-        if (ball.x - BALL_R < 14) {
-          ball.x = 14 + BALL_R;
-          ball.vx = Math.abs(ball.vx);
-          sound.playWalaahTap();
-        } else if (ball.x + BALL_R > W - 14) {
-          ball.x = W - 14 - BALL_R;
-          ball.vx = -Math.abs(ball.vx);
-          sound.playWalaahTap();
-        }
-
-        // Top wall / Goal (Player 1 scores on Player 2's net)
-        if (ball.y - BALL_R < 14) {
-          if (ball.x > GOAL_LEFT && ball.x < GOAL_RIGHT) {
-            p1Score += 1;
-            sound.playTakbeer();
-            const goalBanner = `⚽ GOAL BY ${isOnline ? activeMatchRoom?.player1Name : 'YOU'}!`;
-            setBanner(goalBanner);
-            resetBall(true);
-
-            if (isOnline && activeMatchRoom) {
-              const won = p1Score >= WIN_GOALS;
-              syncMatchRoomMove(
-                activeMatchRoom.id,
-                {
-                  ...activeMatchRoom.state,
-                  ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy },
-                  p1X,
-                  p1Score,
-                  p2Score,
-                  msg: goalBanner,
-                },
-                'player1',
-                won ? activeMatchRoom.player1Uid : undefined,
-              );
-            } else {
-              setScore({ you: p1Score, opp: p2Score });
-              if (p1Score >= WIN_GOALS) {
-                setWinner('you');
-                const prize = isCup ? 1200 : mode === 'twoplayer' ? 1000 : 500;
-                reward({ naira: prize, pasanResistance: 4, barakah: 3 }, `Defeated Ridwan ${p1Score}-${p2Score}!`);
-                return;
-              }
-            }
-          } else {
-            ball.y = 14 + BALL_R;
-            ball.vy = Math.abs(ball.vy);
-            sound.playWalaahTap();
-          }
-        }
-
-        // Bottom wall / Goal (Player 2 / AI scores on Player 1's net)
-        if (ball.y + BALL_R > H - 14) {
-          if (ball.x > GOAL_LEFT && ball.x < GOAL_RIGHT) {
-            p2Score += 1;
-            sound.playPasan();
-            const goalBanner = `⚽ GOAL BY ${isOnline ? activeMatchRoom?.player2Name : 'RIDWAN'}!`;
-            setBanner(goalBanner);
-            resetBall(false);
-
-            if (isOnline && activeMatchRoom) {
-              const won = p2Score >= WIN_GOALS;
-              syncMatchRoomMove(
-                activeMatchRoom.id,
-                {
-                  ...activeMatchRoom.state,
-                  ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy },
-                  p1X,
-                  p1Score,
-                  p2Score,
-                  msg: goalBanner,
-                },
-                'player1',
-                won ? activeMatchRoom.player2Uid : undefined,
-              );
-            } else {
-              setScore({ you: p1Score, opp: p2Score });
-              if (p2Score >= WIN_GOALS) {
-                setWinner('opp');
-                reward({ pasanResistance: 2 }, `Played match against Captain Ridwan (${p1Score}-${p2Score}).`);
-                return;
-              }
-            }
-          } else {
-            ball.y = H - 14 - BALL_R;
-            ball.vy = -Math.abs(ball.vy);
-            sound.playWalaahTap();
-          }
-        }
-
-        // Paddle collisions
-        checkPaddleHit(p1X, H - 34, GOALIE_W, true);
-        if (ball.vy > 0) checkPaddleHit(p1X, H * 0.64, STRIKER_W, true);
-
-        checkPaddleHit(p2X, 34, GOALIE_W, false);
-        if (ball.vy < 0) checkPaddleHit(p2X, H * 0.36, STRIKER_W, false);
-
-        // Player 1 broadcasts authoritative physics at ~15 Hz
-        if (isOnline && activeMatchRoom && now - lastSyncRef.current > 65) {
-          lastSyncRef.current = now;
-          syncMatchRoomMove(
-            activeMatchRoom.id,
-            {
-              ...activeMatchRoom.state,
-              ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: Math.round(ball.vx), vy: Math.round(ball.vy) },
-              p1X: Math.round(p1X),
-              p1Score,
-              p2Score,
-            },
-            'player1',
-          );
-        }
       }
 
       // RENDER PITCH & PADDLES
@@ -444,9 +499,8 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      if (unsub) unsub();
     };
-  }, [mode, isOnline, isPlayer1, myUid, activeMatchRoom, opponentName, player.name, player.stage, reward, setActiveMatchRoom, winner]);
+  }, [mode, isOnline, isPlayer1]);
 
   const handlePointer = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {

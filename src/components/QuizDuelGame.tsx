@@ -81,6 +81,19 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   const [oppFinished, setOppFinished] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(15);
   const rewarded = useRef(false);
+  const roomStateRef = useRef<Record<string, any>>({});
+
+  useEffect(() => {
+    roomStateRef.current = activeMatchRoom?.state || {};
+  }, [activeMatchRoom?.state]);
+
+  useEffect(() => {
+    return () => {
+      if (isMultiplayer) {
+        useGameStore.getState().setActiveMatchRoom(null);
+      }
+    };
+  }, [isMultiplayer]);
 
   // Subscribe to live Firestore match room for cross-device multiplayer
   useEffect(() => {
@@ -163,10 +176,11 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
     // Sync score to Firestore in multiplayer
     if (isMultiplayer && activeMatchRoom) {
+      const curState = roomStateRef.current;
       const p1S = isPlayer1 ? newMyScore : oppScore;
       const p2S = isPlayer1 ? oppScore : newMyScore;
-      const p1Done = isPlayer1 ? isLast : Boolean(activeMatchRoom.state?.p1Done);
-      const p2Done = isPlayer1 ? Boolean(activeMatchRoom.state?.p2Done) : isLast;
+      const p1Done = isPlayer1 ? isLast : Boolean(curState.p1Done);
+      const p2Done = isPlayer1 ? Boolean(curState.p2Done) : isLast;
 
       let winnerUid: string | undefined = undefined;
       if (p1Done && p2Done) {
@@ -178,7 +192,7 @@ export const QuizDuelGame: React.FC<{ onClose: () => void }> = ({ onClose }) => 
       syncMatchRoomMove(
         activeMatchRoom.id,
         {
-          ...activeMatchRoom.state,
+          ...curState,
           p1Score: p1S,
           p2Score: p2S,
           p1Done,

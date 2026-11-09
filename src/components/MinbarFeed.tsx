@@ -305,7 +305,7 @@ export const MinbarFeed: React.FC = () => {
                               id: c.id,
                               type: 'duel_invite',
                               gameType: c.gameType,
-                              roomId: 'room_' + c.id,
+                              roomId: c.roomId || ('room_' + c.id),
                               fromUid: c.fromUid,
                               fromName: c.fromName,
                             });

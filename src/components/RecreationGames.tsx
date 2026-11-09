@@ -98,6 +98,20 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const [flash, setFlash] = useState<{ mine: Foot | null; hers: Foot; text: string; good: boolean } | null>(null);
   const [history, setHistory] = useState<Foot[]>([]);
   const rewarded = useRef(false);
+  const lastProcessedRoundRef = useRef<number>(-1);
+  const roomStateRef = useRef<Record<string, any>>({});
+
+  useEffect(() => {
+    roomStateRef.current = activeMatchRoom?.state || {};
+  }, [activeMatchRoom?.state]);
+
+  useEffect(() => {
+    return () => {
+      if (isMultiplayer) {
+        useGameStore.getState().setActiveMatchRoom(null);
+      }
+    };
+  }, [isMultiplayer]);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const role: 'attack' | 'defend' = isMultiplayer
@@ -130,8 +144,9 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       setHer(oppScore);
       setRoundNo(curRound);
 
-      // Check if both players picked in this round
-      if (st.p1Pick && st.p2Pick) {
+      // Check if both players picked in this round and avoid double-processing
+      if (st.p1Pick && st.p2Pick && curRound > lastProcessedRoundRef.current) {
+        lastProcessedRoundRef.current = curRound;
         const p1F = st.p1Pick as Foot;
         const p2F = st.p2Pick as Foot;
         const mine = isPlayer1 ? p1F : p2F;
@@ -231,7 +246,7 @@ const TenTenInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         syncMatchRoomMove(
           activeMatchRoom.id,
           {
-            ...activeMatchRoom.state,
+            ...roomStateRef.current,
             [isPlayer1 ? 'p1Pick' : 'p2Pick']: mine,
           },
           isPlayer1 ? 'player2' : 'player1',
@@ -714,6 +729,14 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   });
   const rewarded = useRef(false);
 
+  useEffect(() => {
+    return () => {
+      if (isMultiplayer) {
+        useGameStore.getState().setActiveMatchRoom(null);
+      }
+    };
+  }, [isMultiplayer]);
+
   // Sync with Firestore match room in live 1v1 multiplayer
   useEffect(() => {
     if (!isMultiplayer || !activeMatchRoom) return;
@@ -823,8 +846,26 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
       const nextTurn = isPlayer1 ? 'player2' : 'player1';
 
       let winnerUid: string | undefined = undefined;
-      if (p1Seeds >= AYO_TARGET) winnerUid = activeMatchRoom.player1Uid;
-      else if (p2Seeds >= AYO_TARGET) winnerUid = activeMatchRoom.player2Uid;
+      let finalP1 = p1Seeds;
+      let finalP2 = p2Seeds;
+
+      const nextWho = nextTurn === 'player1' ? 'you' : 'ai';
+      const nextMovesAvailable = legalPits(board, nextWho).length > 0;
+
+      if (p1Seeds >= AYO_TARGET) {
+        winnerUid = activeMatchRoom.player1Uid;
+      } else if (p2Seeds >= AYO_TARGET) {
+        winnerUid = activeMatchRoom.player2Uid;
+      } else if (!nextMovesAvailable || g.moves + 1 >= 100) {
+        // Collect remaining seeds
+        board.forEach((n, i) => {
+          if (sideOf(i) === 'you') finalP1 += n;
+          else finalP2 += n;
+        });
+        if (finalP1 > finalP2) winnerUid = activeMatchRoom.player1Uid;
+        else if (finalP2 > finalP1) winnerUid = activeMatchRoom.player2Uid;
+        else winnerUid = 'draw';
+      }
 
       const moveMsg = captured > 0 ? `${player.name} captured ${captured} seeds!` : `${player.name} played pit ${pit + 1}.`;
 
@@ -832,8 +873,8 @@ const AyoInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
         activeMatchRoom.id,
         {
           board,
-          p1Seeds,
-          p2Seeds,
+          p1Seeds: finalP1,
+          p2Seeds: finalP2,
           moves: g.moves + 1,
           msg: moveMsg,
         },

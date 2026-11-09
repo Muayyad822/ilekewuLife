@@ -16,6 +16,7 @@ import {
   subscribeChallenges,
   subscribeMinbarPosts,
   subscribeIncomingInteractions,
+  updatePresenceStatus,
 } from '@/lib/firebase';
 import {
   BookOpen,
@@ -113,6 +114,22 @@ export const TopLeftHud: React.FC = () => {
         } else {
           await store.syncToCloud();
         }
+
+        // Broadcast presence immediately upon successful authentication
+        const cur = useGameStore.getState();
+        updatePresenceStatus({
+          uid: user.uid,
+          name: cur.player.name,
+          stage: cur.player.stage,
+          madrasahName: cur.player.madrasahName,
+          ilm: cur.player.stats.ilm,
+          hifzJuz: cur.player.hifzJuz,
+          housingTier: cur.housing.tier,
+          currentTab: cur.activeTab,
+          lastSeen: Date.now(),
+          outfit: cur.outfit,
+          isLive: true,
+        });
       } else {
         store.setAuthUser(null);
         if (unsubInteractions) {
@@ -139,7 +156,28 @@ export const TopLeftHud: React.FC = () => {
       useGameStore.getState().setMinbarPosts(posts);
     });
 
+    // Periodic presence heartbeat every 60s
+    const heartbeat = setInterval(() => {
+      const { authUser, player, housing, activeTab, outfit } = useGameStore.getState();
+      if (authUser) {
+        updatePresenceStatus({
+          uid: authUser.uid,
+          name: player.name,
+          stage: player.stage,
+          madrasahName: player.madrasahName,
+          ilm: player.stats.ilm,
+          hifzJuz: player.hifzJuz,
+          housingTier: housing.tier,
+          currentTab: activeTab,
+          lastSeen: Date.now(),
+          outfit,
+          isLive: true,
+        });
+      }
+    }, 60000);
+
     return () => {
+      clearInterval(heartbeat);
       window.removeEventListener('beforeunload', onBeforeUnload);
       unsubAuth();
       if (unsubInteractions) unsubInteractions();

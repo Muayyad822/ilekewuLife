@@ -209,6 +209,7 @@ export interface GameChallenge {
   toUid: string;
   toName: string;
   gameType: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
+  roomId?: string;
   wager: number;
   status: 'pending' | 'accepted' | 'completed' | 'declined';
   winnerUid?: string;

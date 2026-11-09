@@ -381,12 +381,35 @@ export function subscribeChallenges(cb: (challenges: GameChallenge[]) => void): 
 
 export async function createOrJoinMatchRoom(
   room: MultiplayerMatchRoom,
-): Promise<void> {
-  if (!db || !room.id) return;
+): Promise<MultiplayerMatchRoom> {
+  if (!db || !room.id) return room;
   try {
-    await setDoc(doc(db, 'match_rooms', room.id), room, { merge: true });
+    const roomRef = doc(db, 'match_rooms', room.id);
+    const snap = await getDoc(roomRef);
+    if (snap.exists()) {
+      const existing = snap.data() as Omit<MultiplayerMatchRoom, 'id'>;
+      const merged: MultiplayerMatchRoom = {
+        ...existing,
+        id: snap.id,
+        player2Uid: room.player2Uid || existing.player2Uid,
+        player2Name: room.player2Name || existing.player2Name,
+        status: 'active',
+        lastMoveAt: Date.now(),
+      };
+      await updateDoc(roomRef, {
+        player2Uid: merged.player2Uid,
+        player2Name: merged.player2Name,
+        status: 'active',
+        lastMoveAt: Date.now(),
+      });
+      return merged;
+    } else {
+      await setDoc(roomRef, room);
+      return room;
+    }
   } catch (err) {
     console.warn('Could not create or join match room:', err);
+    return room;
   }
 }
 

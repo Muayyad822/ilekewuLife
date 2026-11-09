@@ -620,7 +620,10 @@ export const ActivityModal: React.FC = () => {
 
   if (!activity) return null;
 
-  const close = () => setActivity(null);
+  const close = () => {
+    useGameStore.getState().setActiveMatchRoom(null);
+    setActivity(null);
+  };
   const prayer = prayerFor(useGameStore.getState().hour);
 
   let title = 'Madrasah Activity';

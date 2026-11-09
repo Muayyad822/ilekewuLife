@@ -1124,11 +1124,11 @@ export const useGameStore = create<GameState>()(
   openChatWithPeer: (peer) => set({ activeChatPeer: peer }),
   closeChat: () => set({ activeChatPeer: null }),
 
-  acceptIncomingChallenge: (alert) => {
+  acceptIncomingChallenge: async (alert) => {
     const { player, authUser } = get();
     const myUid = authUser?.uid || player.id;
     if (alert.roomId) {
-      const room: MultiplayerMatchRoom = {
+      const fallbackRoom: MultiplayerMatchRoom = {
         id: alert.roomId,
         gameType: (alert.gameType as any) || 'ayo',
         player1Uid: alert.fromUid || 'opponent',
@@ -1141,8 +1141,8 @@ export const useGameStore = create<GameState>()(
         status: 'active',
         lastMoveAt: Date.now(),
       };
-      createOrJoinMatchRoom(room);
-      set({ activeMatchRoom: room });
+      const joinedRoom = await createOrJoinMatchRoom(fallbackRoom);
+      set({ activeMatchRoom: joinedRoom });
     }
     if (alert.gameType === 'ayo') {
       set({ activity: 'ayo', activeTab: 'compound' });
@@ -1190,8 +1190,8 @@ export const useGameStore = create<GameState>()(
 
     const initialAyoState = {
       board: Array(12).fill(4),
-      you: 0,
-      ai: 0,
+      p1Seeds: 0,
+      p2Seeds: 0,
       turn: 'player1',
       moves: 0,
       msg: `Match started! ${player.name} goes first.`,
@@ -1241,6 +1241,7 @@ export const useGameStore = create<GameState>()(
       toUid: peer.uid,
       toName: peer.name,
       gameType,
+      roomId,
       wager: matchWager,
       status: 'accepted',
       createdAt: Date.now(),
