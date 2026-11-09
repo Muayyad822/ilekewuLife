@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { SubjectId } from '@/types/game';
+import { SubjectId, OnlinePeer } from '@/types/game';
 import {
   SUBJECTS,
   getFeaturedSubjectForToday,
@@ -11,6 +11,7 @@ import {
 } from '@/data/curriculum';
 import { McqRunner } from '@/components/Activities';
 import { TodayCard } from '@/components/classroom/TodayCard';
+import { GameLauncherModal } from '@/components/GameLauncherModal';
 import {
   BookOpen,
   CheckCircle2,
@@ -58,6 +59,7 @@ export const ClassroomView: React.FC = () => {
     alreadyDoneToday: boolean;
   } | null>(null);
   const [peerToast, setPeerToast] = useState<string | null>(null);
+  const [selectedDuelPeer, setSelectedDuelPeer] = useState<OnlinePeer | null>(null);
 
   const subjectMeta = SUBJECTS.find((s) => s.id === activeSubject) ?? SUBJECTS[0];
   const topic = useMemo(
@@ -262,10 +264,7 @@ export const ClassroomView: React.FC = () => {
                           <MessageCircle className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            const res = organizeGameWithPeer(peer, 'quiz_duel', 1000);
-                            setPeerToast(res.msg);
-                          }}
+                          onClick={() => setSelectedDuelPeer(peer)}
                           title="Challenge to Classroom Speed Duel (₦1,000 prize)"
                           className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 text-xs cursor-pointer transition"
                         >
@@ -433,6 +432,19 @@ export const ClassroomView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {selectedDuelPeer && (
+        <GameLauncherModal
+          gameId="quiz_duel"
+          targetPeer={selectedDuelPeer}
+          onPlayBot={() => {}}
+          onPlayFriend={(peer) => {
+            const res = organizeGameWithPeer(peer, 'quiz_duel', 1000);
+            setPeerToast(res.msg);
+            setSelectedDuelPeer(null);
+          }}
+          onBack={() => setSelectedDuelPeer(null)}
+        />
       )}
     </div>
   );

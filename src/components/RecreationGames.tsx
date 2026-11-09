@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
-import { RotateCcw, X, Users, Sparkles } from 'lucide-react';
+import { RotateCcw, X, Users, Sparkles, Play } from 'lucide-react';
 import { subscribeMatchRoom, syncMatchRoomMove, publishMinbarPostToCloud } from '@/lib/firebase';
 
 // ============================================================================
@@ -543,7 +543,7 @@ const SuweInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   return (
     <div className="p-5 space-y-4 relative">
       <GameHeader
-        title="🪨 Suwe — Nigerian Hopscotch"
+        title="🪨 Suwe"
         subtitle="Toss your stone into the right box, then hop the grid in order without stepping on its box."
         badge={`Win up to ₦${SUWE_ROUNDS * 180}`}
       />
@@ -986,7 +986,7 @@ export const AyoGame = withReplay(AyoInner);
 // 4. SKIPPING ROPE — timing & rhythm
 // ============================================================================
 const SKIP_W = 360;
-const SKIP_H = 300;
+const SKIP_H = 260;
 const SKIP_GOAL = 20;
 const JUMP_MS = 520;
 
@@ -996,17 +996,27 @@ const SkippingInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
   const jumpAtRef = useRef(-10000);
   const [streak, setStreak] = useState(0);
   const [lives, setLives] = useState(3);
-  const [done, setDone] = useState(false);
-  const [msg, setMsg] = useState('Tap JUMP (or press Space) so you are in the air when the rope sweeps the ground!');
+  const [gameState, setGameState] = useState<'ready' | 'countdown' | 'playing' | 'done'>('ready');
+  const [countdown, setCountdown] = useState(3);
+  const [msg, setMsg] = useState('Tap JUMP or press Space when the rope sweeps near your feet!');
+  const rewarded = useRef(false);
 
   const jump = useCallback(() => {
+    if (gameState === 'ready') {
+      sound.playWalaahTap();
+      setGameState('countdown');
+      setCountdown(3);
+      return;
+    }
+    if (gameState !== 'playing') return;
     const now = performance.now();
     if (now - jumpAtRef.current > JUMP_MS * 0.7) {
       jumpAtRef.current = now;
       sound.playWalaahTap();
     }
-  }, []);
+  }, [gameState]);
 
+  // Keyboard controls
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ' || e.key === 'ArrowUp') {
@@ -1018,14 +1028,34 @@ const SkippingInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [jump]);
 
+  // Countdown timer before starting
+  useEffect(() => {
+    if (gameState !== 'countdown') return;
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setGameState('playing');
+          sound.playTakbeer();
+          setMsg('Jump now when the rope sweeps!');
+          return 0;
+        }
+        sound.playWalaahTap();
+        return prev - 1;
+      });
+    }, 600);
+    return () => clearInterval(interval);
+  }, [gameState]);
+
+  // Main animation & game loop
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    const ground = SKIP_H - 50;
-    const handY = ground - 70;
-    const amp = 70;
+    const ground = SKIP_H - 45;
+    const handY = ground - 65;
+    const amp = 65;
     let phase = 0;
     let streakL = 0;
     let livesL = 3;
@@ -1034,128 +1064,239 @@ const SkippingInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     let finished = false;
 
     const end = () => {
-      if (finished) return;
+      if (finished || rewarded.current) return;
       finished = true;
+      rewarded.current = true;
       const naira = Math.min(streakL, SKIP_GOAL) * 35;
       reward(
         { naira, energy: -5, pasanResistance: Math.floor(streakL / 5), barakah: streakL >= SKIP_GOAL ? 4 : 1 },
-        `Skipped rope ${streakL} times in a row and won ₦${naira}!`,
+        streakL > 0
+          ? `Skipped rope ${streakL} times in a row and won ₦${naira}!`
+          : 'Practiced skipping rope on the playground.',
       );
-      setDone(true);
+      setGameState('done');
     };
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
       const dt = Math.min(0.04, (now - last) / 1000);
       last = now;
-      if (finished) return;
 
-      const period = Math.max(0.55, 1.1 - 0.025 * streakL);
-      const before = Math.floor(phase);
-      phase += dt / period;
-      const since = now - jumpAtRef.current;
-      const h = since >= 0 && since < JUMP_MS ? Math.sin((Math.PI * since) / JUMP_MS) : 0;
+      // Only advance rope simulation when actively playing
+      if (gameState === 'playing' && !finished) {
+        const period = Math.max(0.65, 1.25 - 0.03 * streakL);
+        const before = Math.floor(phase);
+        phase += dt / period;
+        const since = now - jumpAtRef.current;
+        const h = since >= 0 && since < JUMP_MS ? Math.sin((Math.PI * since) / JUMP_MS) : 0;
 
-      if (Math.floor(phase) > before) {
-        if (h > 0.35) {
-          streakL += 1;
-          sound.playCoin();
-          setStreak(streakL);
-          setMsg(streakL % 5 === 0 ? `🔥 ${streakL} in a row — the rope is getting faster!` : 'Nice jump!');
-          if (streakL >= SKIP_GOAL) end();
-        } else {
-          livesL -= 1;
-          sound.playPasan();
-          setLives(livesL);
-          setMsg('Tripped on the rope! Keep your rhythm.');
-          if (livesL <= 0) end();
+        if (Math.floor(phase) > before) {
+          if (h > 0.32) {
+            streakL += 1;
+            sound.playCoin();
+            setStreak(streakL);
+            setMsg(streakL % 5 === 0 ? `🔥 ${streakL} in a row — picking up speed!` : 'Perfect timing! Keep jumping!');
+            if (streakL >= SKIP_GOAL) end();
+          } else {
+            livesL -= 1;
+            sound.playPasan();
+            setLives(livesL);
+            setMsg(livesL > 1 ? 'Tripped on the rope! 2 lives left.' : livesL === 1 ? 'Careful! 1 life left!' : 'Out of lives!');
+            if (livesL <= 0) end();
+          }
         }
       }
 
-      // ---------- draw ----------
+      // Draw Court & Characters
       ctx.clearRect(0, 0, SKIP_W, SKIP_H);
+
+      // Sky background
       ctx.fillStyle = '#bae6fd';
       ctx.fillRect(0, 0, SKIP_W, SKIP_H);
+
+      // Ground
       ctx.fillStyle = '#d8b07a';
       ctx.fillRect(0, ground, SKIP_W, SKIP_H - ground);
 
       const leftX = 40;
       const rightX = SKIP_W - 40;
-      const cos = Math.cos(phase * Math.PI * 2);
+      const since = now - jumpAtRef.current;
+      const h = since >= 0 && since < JUMP_MS ? Math.sin((Math.PI * since) / JUMP_MS) : 0;
+
+      // Rope sweep calculation
+      const cos = gameState === 'ready' || gameState === 'countdown' ? 1 : Math.cos(phase * Math.PI * 2);
       const ctrlY = handY + cos * 2 * amp;
+
+      // Sweet spot visual ring near ground when rope is sweeping
+      if (gameState === 'playing' && cos > 0.6) {
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(SKIP_W / 2, ground - 4, 38, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Rope shadow on ground
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(leftX, ground);
+      ctx.quadraticCurveTo(SKIP_W / 2, ground + 6, rightX, ground);
+      ctx.stroke();
+
+      // Skipping Rope
       ctx.strokeStyle = '#dc2626';
       ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(leftX, handY);
       ctx.quadraticCurveTo(SKIP_W / 2, ctrlY, rightX, handY);
       ctx.stroke();
 
+      // Two side rope turners (Bilal & Amina)
       for (const x of [leftX, rightX]) {
+        // Body
         ctx.fillStyle = '#7c3aed';
         ctx.fillRect(x - 12, handY - 6, 24, ground - handY + 6);
+        // Head
         ctx.fillStyle = '#7a4a24';
         ctx.beginPath();
         ctx.arc(x, handY - 20, 14, 0, Math.PI * 2);
         ctx.fill();
+        // Arms
+        ctx.strokeStyle = '#7c3aed';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(x, handY);
+        ctx.lineTo(x + (x === leftX ? 10 : -10), handY + 4);
+        ctx.stroke();
       }
 
-      const py = ground - h * 62;
+      // Main Scholar (Jumping Player)
+      const py = ground - h * 58;
+
+      // Player shadow on ground shrinks when in air
+      ctx.fillStyle = `rgba(0,0,0,${Math.max(0.08, 0.3 - h * 0.25)})`;
+      ctx.beginPath();
+      ctx.ellipse(SKIP_W / 2, ground - 3, 20 * (1 - h * 0.4), 8 * (1 - h * 0.4), 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Body (Jalabiyah)
       ctx.fillStyle = '#0284c7';
-      ctx.fillRect(SKIP_W / 2 - 14, py - 52, 28, 40);
+      ctx.fillRect(SKIP_W / 2 - 14, py - 50, 28, 38);
+
+      // Head
       ctx.fillStyle = '#5d3a1a';
       ctx.beginPath();
-      ctx.arc(SKIP_W / 2, py - 66, 14, 0, Math.PI * 2);
+      ctx.arc(SKIP_W / 2, py - 62, 13, 0, Math.PI * 2);
       ctx.fill();
+
+      // Keffiyeh / Cap
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(SKIP_W / 2, py - 70, 11, Math.PI, 0);
+      ctx.fill();
+
+      // Feet
       ctx.fillStyle = '#1f2937';
       ctx.fillRect(SKIP_W / 2 - 14, py - 12, 10, 12);
       ctx.fillRect(SKIP_W / 2 + 4, py - 12, 10, 12);
     };
+
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [reward]);
+  }, [gameState, reward]);
 
   const won = streak >= SKIP_GOAL;
 
   return (
-    <div className="p-5 space-y-4">
-      <GameHeader
-        title="🪢 Skipping Rope — Okunuga"
-        subtitle={`Jump in time with the rope. Reach ${SKIP_GOAL} jumps — it gets faster as you go!`}
-        badge={`₦35 per jump`}
-      />
-      <div className="flex items-center justify-between text-xs font-extrabold">
-        <span className="px-2.5 py-1 rounded-full bg-stone-900 text-white">Streak {streak}/{SKIP_GOAL}</span>
+    <div className="p-3 sm:p-4 max-w-sm mx-auto flex flex-col items-center gap-2.5">
+      {/* Compact Scorebar */}
+      <div className="w-full flex items-center justify-between bg-stone-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm">
+        <span className="text-amber-300">Streak: {streak}/{SKIP_GOAL}</span>
+        <span className="text-[11px] font-mono text-stone-300">₦35 / jump</span>
         <span>{'❤️'.repeat(Math.max(0, lives))}</span>
       </div>
-      <div className="relative rounded-2xl overflow-hidden border-4 border-stone-800">
+
+      {/* Canvas Area with Responsive Max-Height */}
+      <div className="relative rounded-2xl overflow-hidden border-3 border-stone-800 shadow-md w-full flex justify-center bg-sky-200">
         <canvas
           ref={canvasRef}
           width={SKIP_W}
           height={SKIP_H}
-          style={{ width: '100%', height: 'auto', touchAction: 'none' }}
-          className="block"
+          style={{
+            width: '100%',
+            maxWidth: '360px',
+            height: 'auto',
+            aspectRatio: '360 / 260',
+            touchAction: 'none',
+          }}
+          className="block cursor-pointer"
           onPointerDown={jump}
         />
-        {done && (
+
+        {/* Ready Overlay before user starts */}
+        {gameState === 'ready' && (
+          <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center p-4 text-center text-white gap-2.5 backdrop-blur-[1px]">
+            <div className="text-3xl animate-bounce">🪢</div>
+            <h4 className="font-black text-base text-amber-300 tracking-wide">
+              Ready to Skip?
+            </h4>
+            <p className="text-[11px] text-stone-200 max-w-[240px] leading-relaxed">
+              Tap the button or press <b>SPACE</b> when the rope sweeps near your feet!
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                sound.playWalaahTap();
+                setGameState('countdown');
+                setCountdown(3);
+              }}
+              className="mt-1 px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black text-xs shadow-lg cursor-pointer transition active:scale-95 flex items-center gap-1.5"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" /> START SKIPPING
+            </button>
+          </div>
+        )}
+
+        {/* Countdown Overlay */}
+        {gameState === 'countdown' && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-center">
+            <span className="text-5xl font-black text-amber-300 drop-shadow-lg animate-ping">
+              {countdown}
+            </span>
+          </div>
+        )}
+
+        {/* Result Overlay */}
+        {gameState === 'done' && (
           <ResultCard
             emoji={won ? '🏆' : '🪢'}
-            title={won ? 'Perfect rhythm!' : `${streak} jumps!`}
-            message={`You won ₦${Math.min(streak, SKIP_GOAL) * 35} and some stamina training.`}
+            title={won ? 'Masha\'Allah! Perfect rhythm!' : `${streak} jumps!`}
+            message={`You won ₦${Math.min(streak, SKIP_GOAL) * 35} and improved your agility!`}
             onAgain={onAgain}
             onClose={onClose}
           />
         )}
       </div>
-      <div className="text-xs font-semibold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{msg}</div>
+
+      {/* Tip Banner */}
+      <div className="text-[11px] font-bold text-stone-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 w-full text-center shadow-2xs">
+        {msg}
+      </div>
+
+      {/* JUMP Button directly visible underneath canvas */}
       <button
+        type="button"
+        disabled={gameState !== 'playing'}
         onPointerDown={(e) => {
           e.preventDefault();
           jump();
         }}
-        className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 font-extrabold text-base cursor-pointer select-none"
+        className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-95 disabled:opacity-40 text-stone-950 font-black text-base cursor-pointer select-none shadow-md transition flex items-center justify-center gap-2"
         style={{ touchAction: 'manipulation' }}
       >
-        ⬆️ JUMP
+        <span>⬆️</span>
+        <span>JUMP (Space or Tap)</span>
       </button>
     </div>
   );
@@ -1384,7 +1525,7 @@ const CatcherInner: React.FC<InnerProps> = ({ onClose, onAgain }) => {
     <div className="p-4 flex flex-col items-center gap-3">
       <div className="w-full max-w-[360px]">
         <GameHeader
-          title="🏃 Boju-Boju — Dodge & Collect"
+          title="🏃 Boju-Boju"
           subtitle="Grab the sweets, dodge the rolling balls, catch ⭐ for a speed burst!"
           badge="₦50 per sweet"
         />

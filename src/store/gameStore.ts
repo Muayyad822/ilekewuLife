@@ -1150,6 +1150,8 @@ export const useGameStore = create<GameState>()(
       set({ activity: 'tenten', activeTab: 'compound' });
     } else if (alert.gameType === 'football') {
       set({ activity: 'football', activeTab: 'compound' });
+    } else if (alert.gameType === 'throw') {
+      set({ activity: 'throw', activeTab: 'compound' });
     } else if (alert.gameType === 'quiz_duel') {
       set({ activity: 'quiz_duel', activeTab: 'classroom' });
     } else {
@@ -1209,6 +1211,17 @@ export const useGameStore = create<GameState>()(
       over: null,
     };
 
+    const initialThrowState = {
+      p1Health: 100,
+      p2Health: 100,
+      distance: 55, // 55m
+      lastThrow: null,
+      turn: 'player1',
+      roundNo: 1,
+      over: null,
+      msg: `Snowball duel started! ${player.name} takes the first shot.`,
+    };
+
     const matchRoomState =
       gameType === 'ayo'
         ? initialAyoState
@@ -1216,6 +1229,8 @@ export const useGameStore = create<GameState>()(
         ? initialTenTenState
         : gameType === 'football'
         ? initialFootballState
+        : gameType === 'throw'
+        ? initialThrowState
         : initialQuizDuelState;
 
     const matchRoom: MultiplayerMatchRoom = {
@@ -1273,6 +1288,8 @@ export const useGameStore = create<GameState>()(
       set({ activity: 'football', activeTab: 'compound' });
     } else if (gameType === 'tenten') {
       set({ activity: 'tenten', activeTab: 'compound' });
+    } else if (gameType === 'throw') {
+      set({ activity: 'throw', activeTab: 'compound' });
     } else if (gameType === 'quiz_duel') {
       set({ activity: 'quiz_duel', activeTab: 'classroom' });
     } else {

@@ -14,7 +14,10 @@ const GOAL_RIGHT = (W + GOAL_W) / 2;
 const BALL_R = 9;
 const WIN_GOALS = 3;
 
-export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const FootballMinigame: React.FC<{
+  onClose: () => void;
+  initialMode?: 'friendly' | 'cup' | 'twoplayer' | 'online';
+}> = ({ onClose, initialMode }) => {
   const { player, reward } = useGameStore();
   const activeMatchRoom = useGameStore((s) => s.activeMatchRoom);
   const setActiveMatchRoom = useGameStore((s) => s.setActiveMatchRoom);
@@ -32,7 +35,7 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [mode, setMode] = useState<'menu' | 'friendly' | 'cup' | 'twoplayer' | 'online'>(
-    isMultiplayer ? 'online' : 'menu',
+    isMultiplayer ? 'online' : initialMode || 'friendly',
   );
   const isOnline = mode === 'online';
   const [score, setScore] = useState<{ you: number; opp: number }>({ you: 0, opp: 0 });
@@ -152,7 +155,8 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
 
     const isCup = mode === 'cup';
     const baseSpeed = isCup ? 275 : 230;
-    const aiSpeed = isCup ? 225 : 170;
+    // Balanced competitive speed: Ridwan defends central & straight shots well, but can be beaten by sharp bank/corner shots
+    const aiSpeed = isCup ? 210 : 175;
 
     let p1X = W / 2;
     let p2X = W / 2;
@@ -292,11 +296,13 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
         p2X += (p2InputXRef.current - p2X) * Math.min(1, dt * 18);
         p2X = Math.max(40, Math.min(W - 40, p2X));
       } else {
-        // Solo against Captain Ridwan
+        // Solo against Captain Ridwan - natural tracking with human response offset
         p1X += (inputXRef.current - p1X) * Math.min(1, dt * 18);
         p1X = Math.max(40, Math.min(W - 40, p1X));
 
-        const aiTarget = ball.vy < 0 || ball.y < H * 0.62 ? ball.x : W / 2;
+        // Add subtle natural wobble offset so bot doesn't robotically dead-center every return
+        const trackingOffset = Math.sin(now * 0.003) * 10;
+        const aiTarget = ball.vy < 0 || ball.y < H * 0.55 ? ball.x + trackingOffset : W / 2;
         const diff = aiTarget - p2X;
         const maxStep = aiSpeed * dt;
         if (Math.abs(diff) > maxStep) p2X += Math.sign(diff) * maxStep;
@@ -517,7 +523,7 @@ export const FootballMinigame: React.FC<{ onClose: () => void }> = ({ onClose })
         <div className="flex items-center justify-between border-b border-stone-200 pb-3">
           <div>
             <h3 className="font-extrabold text-base text-stone-900 flex items-center gap-2">
-              ⚽ Kewu F.C. — Ping-Pong Table Soccer
+              ⚽ Ping Pong
             </h3>
             <p className="text-xs text-stone-500">
               Slide your Goalie &amp; Striker rods to bounce the ball past your opponent into the Monkey Post!

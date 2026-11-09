@@ -22,8 +22,10 @@ import {
 import { prayerFor } from '@/lib/time';
 import { sound } from '@/lib/audio';
 import { FootballMinigame } from '@/components/FootballMinigame';
+import { ThrowMinigame } from '@/components/ThrowMinigame';
 import { TenTenGame, SuweGame, AyoGame, SkippingGame, CatcherGame } from '@/components/RecreationGames';
 import { QuizDuelGame } from '@/components/QuizDuelGame';
+import { GameLauncherModal } from '@/components/GameLauncherModal';
 import { CheckCircle2, XCircle, Lock, Bus, Sparkles, BookOpen, ShoppingBag, Volume2 } from 'lucide-react';
 
 // ============================================================================
@@ -618,12 +620,44 @@ export const ActivityModal: React.FC = () => {
     return [];
   }, [activity, subPhase]);
 
+  const [gameStarted, setGameStarted] = useState(false);
+  const activeMatchRoom = useGameStore((s) => s.activeMatchRoom);
+
+  useEffect(() => {
+    setGameStarted(false);
+  }, [activity]);
+
   if (!activity) return null;
 
   const close = () => {
     useGameStore.getState().setActiveMatchRoom(null);
     setActivity(null);
+    setGameStarted(false);
   };
+
+  const isMinigame =
+    activity === 'football' ||
+    activity === 'throw' ||
+    activity === 'ayo' ||
+    activity === 'tenten' ||
+    activity === 'suwe' ||
+    activity === 'skipping' ||
+    activity === 'catcher' ||
+    activity === 'quiz_duel';
+
+  if (isMinigame && !gameStarted && !activeMatchRoom) {
+    return (
+      <GameLauncherModal
+        gameId={activity}
+        onPlayBot={() => setGameStarted(true)}
+        onPlayFriend={(peer) => {
+          useGameStore.getState().organizeGameWithPeer(peer, activity as any, 1000);
+          setGameStarted(true);
+        }}
+        onBack={close}
+      />
+    );
+  }
   const prayer = prayerFor(useGameStore.getState().hour);
 
   let title = 'Madrasah Activity';
@@ -895,25 +929,28 @@ export const ActivityModal: React.FC = () => {
     title = 'Danfo Bus Stop — Lagos Transit';
     body = <BusView />;
   } else if (activity === 'football') {
-    title = 'Kewu F.C. — Ping-Pong Table Soccer';
-    body = <FootballMinigame onClose={close} />;
+    title = 'Ping Pong';
+    body = <FootballMinigame onClose={close} initialMode={activeMatchRoom ? 'online' : 'friendly'} />;
+  } else if (activity === 'throw') {
+    title = 'Throw — Snowball Duel';
+    body = <ThrowMinigame onClose={close} initialMode={activeMatchRoom ? 'online' : 'friendly'} />;
   } else if (activity === 'quiz_duel') {
-    title = 'Musabaqah 1v1 Classroom Duel';
+    title = 'Quiz Duel';
     body = <QuizDuelGame onClose={close} />;
   } else if (activity === 'tenten') {
-    title = 'Tinko-Tinko — Foot-Clapping Duel';
+    title = 'Tinko-Tinko';
     body = <TenTenGame onClose={close} />;
   } else if (activity === 'suwe') {
-    title = 'Suwe — Nigerian Hopscotch';
+    title = 'Suwe';
     body = <SuweGame onClose={close} />;
   } else if (activity === 'ayo') {
-    title = 'Ayo Olopon — Yoruba Mancala';
+    title = 'Ayo';
     body = <AyoGame onClose={close} />;
   } else if (activity === 'skipping') {
-    title = 'Skipping Rope — Okunuga';
+    title = 'Skipping Rope';
     body = <SkippingGame onClose={close} />;
   } else if (activity === 'catcher') {
-    title = 'Boju-Boju — Dodge & Collect';
+    title = 'Boju-Boju';
     body = <CatcherGame onClose={close} />;
   }
 

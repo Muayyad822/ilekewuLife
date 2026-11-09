@@ -124,7 +124,7 @@ export type ActivityId =
   | 'hifz' | 'huruf' | 'tutor' | 'wudu' | 'nahw'
   | 'adhan' | 'khutbah' | 'homelesson'
   | 'shop' | 'wardrobe' | 'bus'
-  | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher'
+  | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher' | 'throw'
   | 'quiz_duel';
 
 export interface Outfit {
@@ -163,7 +163,7 @@ export interface OnlinePeer {
 
 export interface MultiplayerMatchRoom {
   id: string;
-  gameType: 'ayo' | 'tenten' | 'football' | 'quiz_duel';
+  gameType: 'ayo' | 'tenten' | 'football' | 'quiz_duel' | 'throw';
   player1Uid: string;
   player1Name: string;
   player2Uid: string;
@@ -182,7 +182,7 @@ export interface PeerInteraction {
   fromName: string;
   toUid: string;
   type: 'salaam' | 'duel_invite' | 'chat_message';
-  gameType?: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
+  gameType?: 'quiz_duel' | 'ayo' | 'football' | 'tenten' | 'throw';
   roomId?: string;
   wager?: number;
   message: string;
@@ -208,7 +208,7 @@ export interface GameChallenge {
   fromName: string;
   toUid: string;
   toName: string;
-  gameType: 'quiz_duel' | 'ayo' | 'football' | 'tenten';
+  gameType: 'quiz_duel' | 'ayo' | 'football' | 'tenten' | 'throw';
   roomId?: string;
   wager: number;
   status: 'pending' | 'accepted' | 'completed' | 'declined';

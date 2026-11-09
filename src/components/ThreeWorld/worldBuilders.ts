@@ -1032,6 +1032,45 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   scene.add(dodgeBall);
   signPost(-18.4, -21.4, 'BOJU-BOJU', '#15803d');
 
+  // --- Throw / Snowball Duel arena ---
+  const snowPatch = new THREE.Mesh(new THREE.RingGeometry(1.6, 1.75, 24), mat(0xffffff, 0.95));
+  snowPatch.rotation.x = -Math.PI / 2;
+  snowPatch.position.set(-19.5, 0.036, -15.0);
+  scene.add(snowPatch);
+
+  // Frosted snow barriers
+  for (const bx of [-20.8, -18.2]) {
+    box(scene, 0.35, 0.55, 0.85, 0xe0f2fe, bx, 0.27, -15.0);
+    box(scene, 0.42, 0.08, 0.92, 0xffffff, bx, 0.58, -15.0, { cast: false });
+  }
+
+  // Piles of snowballs
+  for (const [sx, sz] of [[-20.8, -15.2], [-20.8, -14.8], [-20.8, -15.0], [-18.2, -15.1], [-18.2, -14.9]]) {
+    const sb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), mat(0xffffff, 0.8));
+    sb.position.set(sx, 0.68, sz);
+    sb.castShadow = true;
+    scene.add(sb);
+  }
+
+  // Bullseye Target Stand
+  const targetPole = new THREE.Group();
+  cyl(targetPole, 0.04, 0.04, 1.4, 0x6d4c41, 0, 0.7, 0, 6);
+  const outerTarget = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.05, 16), mat(0xdc2626, 0.8));
+  outerTarget.rotation.x = Math.PI / 2;
+  outerTarget.position.set(0, 1.25, 0);
+  targetPole.add(outerTarget);
+  const innerTarget = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 16), mat(0xffffff, 0.9));
+  innerTarget.rotation.x = Math.PI / 2;
+  innerTarget.position.set(0, 1.25, 0);
+  targetPole.add(innerTarget);
+  const bullseye = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.07, 16), mat(0x0284c7, 0.9));
+  bullseye.rotation.x = Math.PI / 2;
+  bullseye.position.set(0, 1.25, 0);
+  targetPole.add(bullseye);
+  place(targetPole, -19.5, 0, -16.6);
+
+  signPost(-19.5, -13.2, 'THROW', '#0284c7');
+
   // ===================== NEPA POLES, CABLES & LAMPS =====================
   const poleTops: THREE.Vector3[] = [];
   for (let x = -240; x <= 240; x += 16) {
@@ -1334,6 +1373,9 @@ export function createWorld(scene: THREE.Scene): WorldHandles {
   addNPC('baba_ayo', 'Baba Ayo', 'Ayo Master', -32.4, -20, -Math.PI / 2, 'idle',
     { robe: 0xf5f5dc, trim: 0x92400e, cap: 'fila', capColor: 0x7c2d12, beard: 0xdddddd, skin: 0x4a2c17 },
     ['Ayo is the game of wisdom. Sit and play!', 'Count your seeds well, my child.']);
+  addNPC('faruq', 'Faruq', 'Snowball Duelist', -17.5, -15.0, -Math.PI / 2, 'wave',
+    { robe: 0x0284c7, trim: 0xffffff, cap: 'kofia', capColor: 0xbae6fd, skin: 0x4a2c17, scale: 0.88 },
+    ['Snowball duel! Pull back to aim, release to throw!', 'First to reduce health to zero wins. Come and challenge me!']);
 
   // Classroom Hall Instructors & Students (inside the 3D Classroom Hall at x = 31, z = -12)
   addNPC('ustadh_nahw', 'Ustadh Qasim', 'Nahw & Sarf Master', 25.2, -16.8, 0, 'alfa',

@@ -767,34 +767,39 @@ export const LagosWorld: React.FC = () => {
         onInteract: () => { st().setActivity('khutbah'); },
       },
       {
-        id: 'football', name: 'Kewu F.C. Table Soccer Pitch', arabic: 'مَلْعَبُ كُرَةِ الْقَدَمِ', x: -24.5, z: 3.5, radius: 5.8,
-        action: 'Play Ping-Pong Football (Win ₦500–₦1,200)',
+        id: 'football', name: 'Ping Pong', arabic: 'مَلْعَبُ كُرَةِ الْقَدَمِ', x: -24.5, z: 3.5, radius: 5.8,
+        action: 'Play Ping Pong',
         onInteract: () => { st().setActivity('football'); },
       },
       {
-        id: 'tenten', name: 'Tinko-Tinko Court', arabic: 'لُعْبَةُ التَّصْفِيق', x: -34, z: -13.5, radius: 3.4,
-        action: 'Play Tinko-Tinko Duel (Win ₦600)',
+        id: 'tenten', name: 'Tinko-Tinko', arabic: 'لُعْبَةُ التَّصْفِيق', x: -34, z: -13.5, radius: 3.4,
+        action: 'Play Tinko-Tinko',
         onInteract: () => { st().setActivity('tenten'); },
       },
       {
-        id: 'suwe', name: 'Suwe Hopscotch Grid', arabic: 'لُعْبَةُ القَفْز', x: -24.5, z: -13, radius: 3.6,
-        action: 'Play Suwe Hopscotch (Win up to ₦540)',
+        id: 'suwe', name: 'Suwe', arabic: 'لُعْبَةُ القَفْز', x: -24.5, z: -13, radius: 3.6,
+        action: 'Play Suwe',
         onInteract: () => { st().setActivity('suwe'); },
       },
       {
-        id: 'ayo', name: 'Ayo Olopon Bench', arabic: 'لُعْبَةُ الأَيُو', x: -34, z: -20, radius: 2.8,
-        action: 'Play Ayo Olopon with Baba Ayo (Win ₦800)',
+        id: 'ayo', name: 'Ayo', arabic: 'لُعْبَةُ الأَيُو', x: -34, z: -20, radius: 2.8,
+        action: 'Play Ayo',
         onInteract: () => { st().setActivity('ayo'); },
       },
       {
-        id: 'skipping', name: 'Skipping Rope Spot', arabic: 'نَطُّ الحَبْل', x: -26, z: -19.5, radius: 2.6,
-        action: 'Skip Rope (Win up to ₦700)',
+        id: 'skipping', name: 'Skipping Rope', arabic: 'نَطُّ الحَبْل', x: -26, z: -19.5, radius: 2.6,
+        action: 'Play Skipping Rope',
         onInteract: () => { st().setActivity('skipping'); },
       },
       {
-        id: 'catcher', name: 'Boju-Boju Arena', arabic: 'لُعْبَةُ المُطَارَدَة', x: -22, z: -23.5, radius: 3.4,
-        action: 'Play Boju-Boju Dodge & Collect (Win up to ₦700)',
+        id: 'catcher', name: 'Boju-Boju', arabic: 'لُعْبَةُ المُطَارَدَة', x: -22, z: -23.5, radius: 3.4,
+        action: 'Play Boju-Boju',
         onInteract: () => { st().setActivity('catcher'); },
+      },
+      {
+        id: 'throw', name: 'Throw', arabic: 'مَعْرَكَةُ الثَّلْج', x: -19.5, z: -15.0, radius: 3.5,
+        action: 'Play Throw (Snowball Duel)',
+        onInteract: () => { st().setActivity('throw'); },
       },
     ];
     let nearZone: Zone | null = null;

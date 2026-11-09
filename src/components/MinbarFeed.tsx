@@ -25,6 +25,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { sound } from '@/lib/audio';
+import { GameLauncherModal } from '@/components/GameLauncherModal';
 
 export const MinbarFeed: React.FC = () => {
   const minbarPosts = useGameStore((s) => s.minbarPosts);
@@ -53,6 +54,7 @@ export const MinbarFeed: React.FC = () => {
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const audioChunksRef = React.useRef<Blob[]>([]);
   const [selectedPeer, setSelectedPeer] = useState<OnlinePeer | null>(null);
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -178,55 +180,79 @@ export const MinbarFeed: React.FC = () => {
 
           {/* Match Organizer Modal Card when a peer is clicked */}
           {selectedPeer && (
-            <div className="rounded-2xl border-2 border-amber-500 bg-amber-50/90 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-extrabold uppercase text-amber-900">
-                    Organize a Friendly Match vs. {selectedPeer.name}
+            selectedGame ? (
+              <GameLauncherModal
+                gameId={selectedGame}
+                targetPeer={selectedPeer}
+                onPlayBot={() => {}}
+                onPlayFriend={(peer) => {
+                  startPeerGame(peer, selectedGame as any, 1000);
+                  setSelectedGame(null);
+                  setSelectedPeer(null);
+                }}
+                onBack={() => setSelectedGame(null)}
+              />
+            ) : (
+              <div className="rounded-2xl border-2 border-amber-500 bg-amber-50/90 p-4 space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-extrabold uppercase text-amber-900">
+                      Challenge {selectedPeer.name}
+                    </div>
+                    <p className="text-xs text-stone-600">
+                      Select a game to view the rules and compete:
+                    </p>
                   </div>
-                  <p className="text-xs text-stone-600">
-                    Choose a game below to enter the arena immediately with {selectedPeer.name}:
-                  </p>
+                  <button
+                    onClick={() => {
+                      setSelectedPeer(null);
+                      setSelectedGame(null);
+                    }}
+                    className="text-xs font-bold text-stone-500 hover:text-stone-800 cursor-pointer"
+                  >
+                    ✕ Cancel
+                  </button>
                 </div>
-                <button
-                  onClick={() => setSelectedPeer(null)}
-                  className="text-xs font-bold text-stone-500 hover:text-stone-800 cursor-pointer"
-                >
-                  ✕ Cancel
-                </button>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => startPeerGame(selectedPeer, 'quiz_duel', 1000)}
-                  className="p-3 rounded-xl border border-emerald-400 bg-white hover:bg-emerald-50 text-left cursor-pointer"
-                >
-                  <div className="font-extrabold text-xs text-stone-900">📖 Classroom Musabaqah Duel</div>
-                  <div className="text-[11px] text-stone-500">Test today&apos;s subject knowledge (Prize: ₦1,000)</div>
-                </button>
-                <button
-                  onClick={() => startPeerGame(selectedPeer, 'football', 1000)}
-                  className="p-3 rounded-xl border border-sky-400 bg-white hover:bg-sky-50 text-left cursor-pointer"
-                >
-                  <div className="font-extrabold text-xs text-stone-900">⚽ Kewu F.C. Table Soccer</div>
-                  <div className="text-[11px] text-stone-500">First to 3 goals on the compound pitch (Prize: ₦1,000)</div>
-                </button>
-                <button
-                  onClick={() => startPeerGame(selectedPeer, 'ayo', 1000)}
-                  className="p-3 rounded-xl border border-amber-400 bg-white hover:bg-amber-50 text-left cursor-pointer"
-                >
-                  <div className="font-extrabold text-xs text-stone-900">🪵 Ayo Olopon (Yoruba Mancala)</div>
-                  <div className="text-[11px] text-stone-500">Capture seeds on the carved board (Prize: ₦1,000)</div>
-                </button>
-                <button
-                  onClick={() => startPeerGame(selectedPeer, 'tenten', 1000)}
-                  className="p-3 rounded-xl border border-rose-400 bg-white hover:bg-rose-50 text-left cursor-pointer"
-                >
-                  <div className="font-extrabold text-xs text-stone-900">👟 Tinko-Tinko Foot Duel</div>
-                  <div className="text-[11px] text-stone-500">Rhythm &amp; reflex playground match (Prize: ₦1,000)</div>
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => setSelectedGame('football')}
+                    className="p-3 rounded-xl border border-sky-400 bg-white hover:bg-sky-50 text-left cursor-pointer transition shadow-xs"
+                  >
+                    <div className="font-extrabold text-xs text-stone-900">⚽ Ping Pong</div>
+                    <div className="text-[11px] text-stone-500">First to 3 goals (Prize: ₦1,000)</div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedGame('ayo')}
+                    className="p-3 rounded-xl border border-amber-400 bg-white hover:bg-amber-50 text-left cursor-pointer transition shadow-xs"
+                  >
+                    <div className="font-extrabold text-xs text-stone-900">🪵 Ayo</div>
+                    <div className="text-[11px] text-stone-500">Traditional seed capture (Prize: ₦1,000)</div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedGame('tenten')}
+                    className="p-3 rounded-xl border border-rose-400 bg-white hover:bg-rose-50 text-left cursor-pointer transition shadow-xs"
+                  >
+                    <div className="font-extrabold text-xs text-stone-900">👟 Tinko-Tinko</div>
+                    <div className="text-[11px] text-stone-500">Foot-clapping rhythm duel (Prize: ₦1,000)</div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedGame('throw')}
+                    className="p-3 rounded-xl border border-cyan-400 bg-white hover:bg-cyan-50 text-left cursor-pointer transition shadow-xs"
+                  >
+                    <div className="font-extrabold text-xs text-stone-900">❄️ Throw (Snowball Duel)</div>
+                    <div className="text-[11px] text-stone-500">Trajectory artillery battle (Prize: ₦1,000)</div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedGame('quiz_duel')}
+                    className="p-3 rounded-xl border border-emerald-400 bg-white hover:bg-emerald-50 text-left cursor-pointer transition shadow-xs"
+                  >
+                    <div className="font-extrabold text-xs text-stone-900">📖 Quiz Duel</div>
+                    <div className="text-[11px] text-stone-500">Tajweed &amp; Nahw speed duel (Prize: ₦1,000)</div>
+                  </button>
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Online Students Grid */}
