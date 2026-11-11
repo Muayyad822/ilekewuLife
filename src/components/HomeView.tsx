@@ -76,6 +76,9 @@ export const HomeView: React.FC = () => {
     },
     ...(housing.upgrades.includes('asset_fan') ? [{ id: 'fan', name: 'Standing OX Fan', icon: '🌀' }] : []),
     ...(housing.upgrades.includes('asset_maktabah') ? [{ id: 'maktabah', name: 'Maktabah Bookshelf', icon: '📚' }] : []),
+    ...(housing.upgrades.includes('asset_ac') ? [{ id: 'ac', name: 'Inverter Air Conditioner', icon: '❄️' }] : []),
+    ...(housing.upgrades.includes('asset_rehal') ? [{ id: 'rehal', name: 'Hardwood Rehal & Mushaf', icon: '📖' }] : []),
+    ...(housing.upgrades.includes('asset_whiteboard') ? [{ id: 'whiteboard', name: 'Revision Wall Whiteboard', icon: '📋' }] : []),
   ];
 
   const curTf = layout[selectedPiece] ?? { dx: 0, dz: 0, rot: 0 };
@@ -206,11 +209,25 @@ export const HomeView: React.FC = () => {
             )}
 
             {/* Vehicle Transportation section */}
-            {(housing.upgrades.includes('asset_bicycle') || housing.upgrades.includes('asset_okada')) && (
+            {(housing.upgrades.includes('asset_bicycle') ||
+              housing.upgrades.includes('asset_scooter') ||
+              housing.upgrades.includes('asset_okada') ||
+              housing.upgrades.includes('asset_keke') ||
+              housing.upgrades.includes('asset_car')) && (
               <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs font-bold text-stone-200">
                   <span className="text-amber-300 font-extrabold">Active Transport:</span>{' '}
-                  {mount === 'okada' ? '🏍️ Riding Okada (16.5 m/s)' : mount === 'bicycle' ? '🚲 Riding Bicycle (10.5 m/s)' : '🚶 Walking on Foot'}
+                  {mount === 'car'
+                    ? '🚗 Driving Corolla Car (24 - 30 m/s)'
+                    : mount === 'keke'
+                    ? '🛺 Driving Keke Marwa (13.5 - 18 m/s)'
+                    : mount === 'okada'
+                    ? '🏍️ Riding Okada (16.5 - 21 m/s)'
+                    : mount === 'scooter'
+                    ? '⚡ Riding Urban Scooter (12 - 16 m/s)'
+                    : mount === 'bicycle'
+                    ? '🚲 Riding Bicycle (10.5 - 14 m/s)'
+                    : '🚶 Walking on Foot'}
                 </div>
                 <div className="flex items-center gap-2">
                   {mount !== 'none' ? (
@@ -225,6 +242,30 @@ export const HomeView: React.FC = () => {
                     </button>
                   ) : (
                     <>
+                      {housing.upgrades.includes('asset_car') && (
+                        <button
+                          onClick={() => {
+                            setMount('car');
+                            setToast('Cruising in Toyota Corolla Saloon! Press F or tap button to dismount.');
+                            setRoomOverlay('none');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <span>🚗 Drive Car</span>
+                        </button>
+                      )}
+                      {housing.upgrades.includes('asset_keke') && (
+                        <button
+                          onClick={() => {
+                            setMount('keke');
+                            setToast('Started Bajaj RE Keke Marwa! Press F or tap button to dismount.');
+                            setRoomOverlay('none');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-stone-950 font-extrabold text-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <span>🛺 Drive Keke</span>
+                        </button>
+                      )}
                       {housing.upgrades.includes('asset_okada') && (
                         <button
                           onClick={() => {
@@ -235,6 +276,18 @@ export const HomeView: React.FC = () => {
                           className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs cursor-pointer flex items-center gap-1"
                         >
                           <span>🏍️ Ride Okada</span>
+                        </button>
+                      )}
+                      {housing.upgrades.includes('asset_scooter') && (
+                        <button
+                          onClick={() => {
+                            setMount('scooter');
+                            setToast('Mounted Urban Electric Scooter! Press F or tap button to dismount.');
+                            setRoomOverlay('none');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <span>⚡ Ride Scooter</span>
                         </button>
                       )}
                       {housing.upgrades.includes('asset_bicycle') && (

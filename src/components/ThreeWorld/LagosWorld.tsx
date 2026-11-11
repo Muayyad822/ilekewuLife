@@ -6,7 +6,9 @@ import { useGameStore } from '@/store/gameStore';
 import { sound } from '@/lib/audio';
 import { realHourNow, fetchLagosWeather, fetchLagosSolatTimings } from '@/lib/time';
 import { buildCharacter, Character, Pose } from './characterBuilder';
-import { createWorld } from './worldBuilders';
+import { createWorld, advanceVehicle } from './worldBuilders';
+import { HOUSES, HouseTierId, doorZ } from './houseLayout';
+import { HOUSING_TIERS } from '@/data/shop';
 import { Hand, MessageSquare, X } from 'lucide-react';
 
 interface Zone {
@@ -57,11 +59,20 @@ const shortestAngle = (from: number, to: number) => {
 
 const MAP_W = 168;
 const MAP_H = 100;
-const X_MIN = -255;
-const X_MAX = 255;
+const X_MIN = -610;
+const X_MAX = 610;
 const Z_MIN = -27;
-const Z_MAX = 26;
-const STOP_X = { school: 24, east: 220, west: -220 } as const;
+const Z_MAX = 35;
+const STOP_X: Record<string, number> = {
+  school: 24,
+  east: 540,
+  west: -520,
+  ejigbo: 180,
+  oke_afa: 380,
+  isolo: 540,
+  bucknor: -260,
+  idimu: -520,
+};
 
 export const LagosWorld: React.FC = () => {
   const { ride, errand, updateRide } = useGameStore();
@@ -180,25 +191,37 @@ export const LagosWorld: React.FC = () => {
     // ---------- World ----------
     const world = createWorld(scene);
 
-    // ---------- 3D Rain Particle System (activates during live Lagos rain/storm) ----------
-    const RAIN_COUNT = 900;
+    // ---------- 3D Rain Streaks System (activates during live Lagos rain/storm) ----------
+    const RAIN_COUNT = 600;
     const rainGeo = new THREE.BufferGeometry();
-    const rainPositions = new Float32Array(RAIN_COUNT * 3);
+    const rainPositions = new Float32Array(RAIN_COUNT * 2 * 3); // 2 vertices per line streak
+    const rainData: { x: number; y: number; z: number; len: number; speed: number }[] = [];
     for (let i = 0; i < RAIN_COUNT; i++) {
-      rainPositions[i * 3] = (Math.random() - 0.5) * 44;
-      rainPositions[i * 3 + 1] = Math.random() * 20;
-      rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 44;
+      const x = (Math.random() - 0.5) * 44;
+      const y = Math.random() * 20 + 0.6;
+      const z = (Math.random() - 0.5) * 44;
+      const len = 0.45 + Math.random() * 0.35;
+      const speed = 15 + Math.random() * 7;
+      rainData.push({ x, y, z, len, speed });
+
+      const idx = i * 6;
+      rainPositions[idx] = x;
+      rainPositions[idx + 1] = y;
+      rainPositions[idx + 2] = z;
+      rainPositions[idx + 3] = x;
+      rainPositions[idx + 4] = y - len;
+      rainPositions[idx + 5] = z;
     }
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
-    const rainMat = new THREE.PointsMaterial({
-      color: 0xcbe4ff,
-      size: 0.14,
+    const rainMat = new THREE.LineBasicMaterial({
+      color: 0x9ec5e8,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.38,
+      depthWrite: false,
     });
-    const rainPoints = new THREE.Points(rainGeo, rainMat);
-    rainPoints.visible = false;
-    scene.add(rainPoints);
+    const rainLines = new THREE.LineSegments(rainGeo, rainMat);
+    rainLines.visible = false;
+    scene.add(rainLines);
 
     // Sync real-world Lagos weather & Solat timings
     let weatherActive = true;
@@ -324,6 +347,116 @@ export const LagosWorld: React.FC = () => {
     riderMoto.add(mHeadlight);
     riderMountRoot.add(riderMoto);
 
+    // 3. Ridden Electric Urban Scooter (asset_scooter)
+    const riderScooter = new THREE.Group();
+    riderScooter.visible = false;
+    const scooterWheels: THREE.Group[] = [];
+    for (const wz of [-0.42, 0.42]) {
+      const wP = new THREE.Group();
+      wP.position.set(0, 0.14, wz);
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.14, 0.08, 14),
+        new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 })
+      );
+      wheel.rotation.z = Math.PI / 2;
+      wP.add(wheel);
+      riderScooter.add(wP);
+      scooterWheels.push(wP);
+    }
+    const scDeck = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.95), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+    scDeck.position.set(0, 0.15, 0);
+    riderScooter.add(scDeck);
+    const scStem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.05), bChromeMat);
+    scStem.position.set(0, 0.65, 0.42);
+    riderScooter.add(scStem);
+    const scBars = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.05, 0.06), bChromeMat);
+    scBars.position.set(0, 1.15, 0.42);
+    riderScooter.add(scBars);
+    const scHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 1.5 })
+    );
+    scHead.position.set(0, 1.08, 0.48);
+    riderScooter.add(scHead);
+    riderMountRoot.add(riderScooter);
+
+    // 4. Ridden Bajaj RE Keke Napep (asset_keke)
+    const riderKeke = new THREE.Group();
+    riderKeke.visible = false;
+    const kekeWheels: THREE.Group[] = [];
+    const kBody = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.85, 2.3), new THREE.MeshStandardMaterial({ color: 0xffc61a }));
+    kBody.position.set(0, 0.72, 0);
+    riderKeke.add(kBody);
+    const kRoof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 2.1), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+    kRoof.position.set(0, 1.72, -0.1);
+    riderKeke.add(kRoof);
+    for (const pz of [-0.95, 0.95]) {
+      const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+      p1.position.set(-0.68, 1.25, pz);
+      riderKeke.add(p1);
+      const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+      p2.position.set(0.68, 1.25, pz);
+      riderKeke.add(p2);
+    }
+    for (const [wx, wz] of [[0, 0.95], [-0.72, -0.85], [0.72, -0.85]]) {
+      const wP = new THREE.Group();
+      wP.position.set(wx, 0.32, wz);
+      const kw = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.16, 14), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+      kw.rotation.z = Math.PI / 2;
+      wP.add(kw);
+      riderKeke.add(wP);
+      kekeWheels.push(wP);
+    }
+    const kLightMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 1.5 })
+    );
+    kLightMesh.position.set(0, 0.82, 1.16);
+    riderKeke.add(kLightMesh);
+    riderMountRoot.add(riderKeke);
+
+    // 5. Ridden Toyota Corolla Sedan (asset_car)
+    const riderCar = new THREE.Group();
+    riderCar.visible = false;
+    const carWheels: THREE.Group[] = [];
+    const carChassis = new THREE.Mesh(
+      new THREE.BoxGeometry(1.85, 0.68, 4.4),
+      new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.5, roughness: 0.3 })
+    );
+    carChassis.position.set(0, 0.62, 0);
+    riderCar.add(carChassis);
+    const carCabin = new THREE.Mesh(
+      new THREE.BoxGeometry(1.65, 0.62, 2.3),
+      new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4, roughness: 0.3 })
+    );
+    carCabin.position.set(0, 1.25, -0.2);
+    riderCar.add(carCabin);
+    const carGlassMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.2, metalness: 0.8 });
+    const carWindshield = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.52, 0.08), carGlassMat);
+    carWindshield.position.set(0, 1.2, 0.96);
+    riderCar.add(carWindshield);
+    const carRearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.52, 0.08), carGlassMat);
+    carRearGlass.position.set(0, 1.2, -1.36);
+    riderCar.add(carRearGlass);
+    for (const [wx, wz] of [[-0.92, -1.3], [0.92, -1.3], [-0.92, 1.3], [0.92, 1.3]]) {
+      const wP = new THREE.Group();
+      wP.position.set(wx, 0.36, wz);
+      const cw = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.22, 14), new THREE.MeshStandardMaterial({ color: 0x18181b }));
+      cw.rotation.z = Math.PI / 2;
+      wP.add(cw);
+      riderCar.add(wP);
+      carWheels.push(wP);
+    }
+    for (const sx of [-0.68, 0.68]) {
+      const hl = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfff6c0, emissive: 0xfff1a0, emissiveIntensity: 1.6 })
+      );
+      hl.position.set(sx, 0.68, 2.22);
+      riderCar.add(hl);
+    }
+    riderMountRoot.add(riderCar);
+
     // ---------- Name-plates ----------
     interface Label {
       el: HTMLDivElement;
@@ -355,6 +488,7 @@ export const LagosWorld: React.FC = () => {
     const KEY_NPCS = new Set([
       'alfa', 'ped4', 'basira', 'mallam', 'alhaji', 'imam', 'ridwan', 'zainab', 'baba_ayo',
       'ustadh_nahw', 'ustadh_fiqh', 'ustadh_quran', 'dorm_mate1', 'estate_agent',
+      'aboki', 'chidinma', 'chuks', 'chemist', 'mechanic', 'tailor',
     ]);
     world.npcs.forEach((n) => {
       if (!KEY_NPCS.has(n.id)) return;
@@ -405,16 +539,16 @@ export const LagosWorld: React.FC = () => {
     };
 
     // Helper to generate 3D interactive furniture hotspots inside each of the 4 3D Houses
-    const makeHouseZones = (
-      tierId: 'ruwaq' | 'shared_room' | 'mini_flat' | 'personal_villa',
-      houseLabel: string,
-      bedPos: [number, number],
-      deskPos: [number, number],
-      rugPos: [number, number],
-      wardrobePos: [number, number],
-      furnishPos: [number, number],
-      bikePos: [number, number],
-    ): Zone[] => {
+    // Anchors come from houseLayout.ts - the same data the 3D builder uses - so hotspots always sit on their furniture.
+    const makeHouseZones = (tierId: HouseTierId): Zone[] => {
+      const house = HOUSES[tierId];
+      const houseLabel = house.label;
+      const bedPos: [number, number] = [house.bed.x, house.bed.z];
+      const deskPos: [number, number] = [house.desk.x, house.desk.z];
+      const rugPos: [number, number] = [house.rug.x, house.rug.z];
+      const wardrobePos: [number, number] = [house.wardrobe.x, house.wardrobe.z];
+      const furnishPos: [number, number] = [house.ledger.x, house.ledger.z];
+      const slots = house.carport.slots;
       const canUse = () => st().housing.tier === tierId;
       return [
         {
@@ -521,10 +655,10 @@ export const LagosWorld: React.FC = () => {
           id: `bike_${tierId}`,
           name: `${houseLabel} · Bicycle`,
           arabic: 'دَرَّاجَةٌ هَوَائِيَّةٌ',
-          x: bikePos[0],
-          z: bikePos[1],
-          radius: 2.2,
-          action: '🚲 Ride Bicycle (Speed 10.5 m/s)',
+          x: slots.bicycle.x,
+          z: slots.bicycle.z,
+          radius: 1.7,
+          action: '🚲 Ride Bicycle (Speed 10.5 - 14 m/s)',
           isAvailable: () => canUse() && st().housing.upgrades.includes('asset_bicycle') && st().mount !== 'bicycle',
           onInteract: () => {
             st().setMount('bicycle');
@@ -532,17 +666,59 @@ export const LagosWorld: React.FC = () => {
           },
         },
         {
+          id: `scooter_${tierId}`,
+          name: `${houseLabel} · Urban Scooter`,
+          arabic: 'سْكُوتَر كَهْرَبَائِيّ',
+          x: slots.scooter.x,
+          z: slots.scooter.z,
+          radius: 1.4,
+          action: '⚡ Ride Scooter (Speed 12 - 16 m/s)',
+          isAvailable: () => canUse() && st().housing.upgrades.includes('asset_scooter') && st().mount !== 'scooter',
+          onInteract: () => {
+            st().setMount('scooter');
+            return 'Mounted Urban Electric Scooter! Press F or tap Dismount to get off.';
+          },
+        },
+        {
           id: `okada_${tierId}`,
           name: `${houseLabel} · Okada Motorcycle`,
           arabic: 'دَرَّاجَةٌ نَارِيَّةٌ',
-          x: bikePos[0] + 2.4,
-          z: bikePos[1],
-          radius: 2.2,
-          action: '🏍️ Ride Okada (Speed 16 m/s)',
+          x: slots.okada.x,
+          z: slots.okada.z,
+          radius: 1.5,
+          action: '🏍️ Ride Okada (Speed 16.5 - 21 m/s)',
           isAvailable: () => canUse() && st().housing.upgrades.includes('asset_okada') && st().mount !== 'okada',
           onInteract: () => {
             st().setMount('okada');
             return 'Mounted Bajaj Boxer Okada! Press F or tap Dismount to get off.';
+          },
+        },
+        {
+          id: `keke_${tierId}`,
+          name: `${houseLabel} · Keke Marwa Tricycle`,
+          arabic: 'تُوك تُوك كِيكِي',
+          x: slots.keke.x,
+          z: slots.keke.z,
+          radius: 1.6,
+          action: '🛺 Drive Keke (Speed 13.5 - 18 m/s)',
+          isAvailable: () => canUse() && st().housing.upgrades.includes('asset_keke') && st().mount !== 'keke',
+          onInteract: () => {
+            st().setMount('keke');
+            return 'Started Bajaj RE Keke Marwa! Press F or tap Dismount to get off.';
+          },
+        },
+        {
+          id: `car_${tierId}`,
+          name: `${houseLabel} · Toyota Corolla Car`,
+          arabic: 'سَيَّارَةٌ خَاصَّةٌ',
+          x: slots.car.x,
+          z: slots.car.z,
+          radius: 2.0,
+          action: '🚗 Drive Saloon Car (Speed 24 - 30 m/s)',
+          isAvailable: () => canUse() && st().housing.upgrades.includes('asset_car') && st().mount !== 'car',
+          onInteract: () => {
+            st().setMount('car');
+            return 'Cruising in Toyota Corolla Saloon! Press F or tap Dismount to get off.';
           },
         },
         {
@@ -563,6 +739,13 @@ export const LagosWorld: React.FC = () => {
           },
         },
       ];
+    };
+
+    const gateAction = (id: HouseTierId) => {
+      const t = HOUSING_TIERS.find((x) => x.id === id);
+      if (!t) return '🔒 Locked';
+      const k = (n: number) => `₦${n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : n}`;
+      return `🔒 Rent (${k(t.rentPrice)})${t.buyPrice ? ` or Buy (${k(t.buyPrice)})` : ''}`;
     };
 
     const zones: Zone[] = [
@@ -684,39 +867,39 @@ export const LagosWorld: React.FC = () => {
           st().openClassroomSubject('adab');
         },
       },
-      // --- Locked Door Gates for Unowned Houses ---
+      // --- Locked Door Gates for Relocated Private Houses ---
       {
-        id: 'gate_shared_room', name: 'Off-Campus Room (Locked)', arabic: 'غُرْفَةٌ مُغْلَقَةٌ', x: 69, z: -5.2, radius: 2.6,
-        action: '🔒 Rent (₦3.5k) or Buy (₦25k)',
+        id: 'gate_shared_room', name: 'Off-Campus Room (Locked)', arabic: 'غُرْفَةٌ مُغْلَقَةٌ', x: HOUSES.shared_room.cx, z: doorZ(HOUSES.shared_room) + 1.0, radius: 2.8,
+        action: gateAction('shared_room'),
         isAvailable: () => st().housing.tier !== 'shared_room',
         onInteract: () => {
           st().setRoomOverlay('home_dashboard');
-          return 'Rent or buy the Off-Campus Room to unlock this door.';
+          return 'Rent or buy the Off-Campus Room (Ejigbo) to unlock this door.';
         },
       },
       {
-        id: 'gate_mini_flat', name: 'Self-Con Mini-Flat (Locked)', arabic: 'شَقَّةٌ مُغْلَقَةٌ', x: 89, z: -4.8, radius: 2.8,
-        action: '🔒 Rent (₦12k) or Buy (₦95k)',
+        id: 'gate_mini_flat', name: 'Self-Con Mini-Flat (Locked)', arabic: 'شَقَّةٌ مُغْلَقَةٌ', x: HOUSES.mini_flat.cx, z: doorZ(HOUSES.mini_flat) + 1.0, radius: 3.0,
+        action: gateAction('mini_flat'),
         isAvailable: () => st().housing.tier !== 'mini_flat',
         onInteract: () => {
           st().setRoomOverlay('home_dashboard');
-          return 'Rent or buy the Self-Contained Mini-Flat to unlock this door.';
+          return 'Rent or buy the Self-Contained Mini-Flat (Oke-Afa) to unlock this door.';
         },
       },
       {
-        id: 'gate_personal_villa', name: "Sheikh's Villa (Locked)", arabic: 'قَصْرٌ مُغْلَقٌ', x: 113, z: -3.8, radius: 3.0,
-        action: '🔒 Rent (₦35k) or Buy (₦350k)',
+        id: 'gate_personal_villa', name: "Sheikh's Villa (Locked)", arabic: 'قَصْرٌ مُغْلَقٌ', x: HOUSES.personal_villa.cx, z: doorZ(HOUSES.personal_villa) + 1.0, radius: 3.2,
+        action: gateAction('personal_villa'),
         isAvailable: () => st().housing.tier !== 'personal_villa',
         onInteract: () => {
           st().setRoomOverlay('home_dashboard');
-          return "Rent or buy the Sheikh's Villa to unlock this residence.";
+          return "Rent or buy the Sheikh's Villa (Isolo) to unlock this residence.";
         },
       },
       // --- Interactive 3D Furniture inside the 4 Walkable 3D Houses (Gated by Active Tier) ---
-      ...makeHouseZones('ruwaq', 'Ruwaq Dorm', [46.8, -15.5], [46.8, -11.5], [51.0, -15.6], [46.6, -8.0], [54.8, -7.2], [47.2, -4.5]),
-      ...makeHouseZones('shared_room', 'Off-Campus Room', [64.8, -15.5], [64.8, -11.5], [73.2, -15.5], [64.6, -8.0], [73.0, -7.5], [65.2, -4.5]),
-      ...makeHouseZones('mini_flat', 'Mini-Flat', [83.8, -15.8], [83.8, -11.5], [88.2, -16.2], [83.5, -7.8], [94.2, -7.2], [85.0, -4.0]),
-      ...makeHouseZones('personal_villa', "Sheikh's Villa", [106.2, -16.2], [106.2, -11.5], [112.5, -16.5], [105.8, -6.8], [119.5, -6.5], [108.5, -3.2]),
+      ...makeHouseZones('ruwaq'),
+      ...makeHouseZones('shared_room'),
+      ...makeHouseZones('mini_flat'),
+      ...makeHouseZones('personal_villa'),
       {
         id: 'saraa', name: 'Friday Saraa Canopy', arabic: 'مَائِدَةُ الصَّدَقَةِ', x: 8, z: 3.4, radius: 2.8,
         action: 'Take a free plate of jollof (+Energy)',
@@ -727,7 +910,7 @@ export const LagosWorld: React.FC = () => {
         },
       },
       {
-        id: 'buka', name: "Iya Basira's Buka", arabic: 'مَطْعَم', x: -10, z: 19.6, radius: 2.8,
+        id: 'buka', name: "Iya Basira's Buka", arabic: 'مَطْعَم', x: -15, z: 26.8, radius: 3.2,
         action: 'Buy Amala (₦300) / Pick Up Errand',
         onInteract: () => {
           if (st().errand?.stage === 'fetch') return st().pickUpErrand();
@@ -737,32 +920,80 @@ export const LagosWorld: React.FC = () => {
         },
       },
       {
-        id: 'kiosk', name: 'Islamic Books & Wardrobe', arabic: 'مَكْتَبَة', x: 10, z: 19.6, radius: 2.8,
+        id: 'kiosk', name: 'Islamic Books & Wardrobe', arabic: 'مَكْتَبَة', x: 12, z: 26.8, radius: 3.2,
         action: 'Buy Books, Robes, Caps & Attar',
         onInteract: () => { st().setActivity('shop'); },
       },
+      // --- 6 Connected Danfo Bus Stops Along the 1.2km Highway ---
       {
-        id: 'bus_school', name: 'Ejigbo Bus Stop', arabic: 'مَحَطَّة', x: 24, z: 9.4, radius: 3,
+        id: 'bus_idimu', name: 'Idimu Bus Stop', arabic: 'مَحَطَّة إِيدِيمُو', x: -520, z: 8.2, radius: 3.4,
         action: 'Hop on a Yellow Danfo Bus',
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'bus_east', name: 'Isolo Bus Stop', arabic: 'مَحَطَّة إِيسُولُو', x: 220, z: 9.4, radius: 3.2,
-        action: 'Hop on a Danfo (Return to School)',
+        id: 'bus_bucknor', name: 'Bucknor Bus Stop', arabic: 'مَحَطَّة بَاكْنُور', x: -260, z: 8.2, radius: 3.4,
+        action: 'Hop on a Yellow Danfo Bus',
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'bus_west', name: 'Idimu Bus Stop', arabic: 'مَحَطَّة إِيدِيمُو', x: -220, z: 9.4, radius: 3.2,
-        action: 'Hop on a Danfo (Return to School)',
+        id: 'bus_school', name: 'Madrasah Central Bus Stop', arabic: 'مَحَطَّة الْمَدْرَسَة', x: 24, z: 8.2, radius: 3.2,
+        action: 'Hop on a Yellow Danfo Bus',
         onInteract: () => { st().setActivity('bus'); },
       },
       {
-        id: 'isolo_lesson', name: 'Isolo Estate Duplex', arabic: 'دَرْسٌ خُصُوصِيٌّ', x: 230, z: 6.5, radius: 3.5,
+        id: 'bus_ejigbo', name: 'Ejigbo Junction Bus Stop', arabic: 'مَحَطَّة إِيجِيجْبُو', x: 180, z: 8.2, radius: 3.4,
+        action: 'Hop on a Yellow Danfo Bus',
+        onInteract: () => { st().setActivity('bus'); },
+      },
+      {
+        id: 'bus_oke_afa', name: 'Oke-Afa Canal Bus Stop', arabic: 'مَحَطَّة أُوكِي أَفَا', x: 380, z: 8.2, radius: 3.4,
+        action: 'Hop on a Yellow Danfo Bus',
+        onInteract: () => { st().setActivity('bus'); },
+      },
+      {
+        id: 'bus_isolo', name: 'Isolo Terminal Bus Stop', arabic: 'مَحَطَّة إِيسُولُو', x: 540, z: 8.2, radius: 3.4,
+        action: 'Hop on a Yellow Danfo Bus',
+        onInteract: () => { st().setActivity('bus'); },
+      },
+      // --- Roadside Commercial Shops Along Highway (South Sidewalk z = 26.8) ---
+      {
+        id: 'road_suya', name: 'Aboki Mallam Musa Suya Spot', arabic: 'شِوَاءُ اللَّحْمِ', x: 85, z: 26.8, radius: 3.2,
+        action: 'Buy Mai Suya Spicy Beef (+Energy, +Morale)',
+        onInteract: () => { st().setActivity('suya'); },
+      },
+      {
+        id: 'road_provisions', name: 'Mummy Chidinma Provisions Store', arabic: 'بِقَالَةُ شِيدِينْمَا', x: 140, z: 26.8, radius: 3.2,
+        action: 'Buy Milo, Cabin Biscuits & Drinks',
+        onInteract: () => { st().setActivity('provisions'); },
+      },
+      {
+        id: 'road_solar', name: 'Alaba Solar & Inverter Tech', arabic: 'إِلِكْتِرُونِيَّات أَلَابَا', x: 260, z: 26.8, radius: 3.2,
+        action: 'Shop Solar Generators & Appliances',
+        onInteract: () => { st().setRoomOverlay('home_dashboard'); },
+      },
+      {
+        id: 'road_tailor', name: 'Alhaja Kudirat Designer Tailor', arabic: 'خَيَّاطَةُ النُّخْبَة', x: 320, z: 26.8, radius: 3.2,
+        action: 'Order Bespoke Aso-Oke, Moroccan Djellaba & Gold Abaya',
+        onInteract: () => { st().setActivity('wardrobe'); },
+      },
+      {
+        id: 'road_chemist', name: 'Victory Chemist & First Aid', arabic: 'صَيْدَلِيَّةُ الشِّفَاءِ', x: -120, z: 26.8, radius: 3.2,
+        action: 'Buy Paracetamol & First Aid Supplies',
+        onInteract: () => { st().setActivity('chemist'); },
+      },
+      {
+        id: 'road_mechanic', name: 'Master Ganiyu Automobile & Okada Workshop', arabic: 'وِرْشَةُ المِيكَانِيكِي', x: -200, z: 26.8, radius: 3.2,
+        action: 'Service Vehicles & Repairs',
+        onInteract: () => { st().setActivity('mechanic'); },
+      },
+      // --- East & West Employment Hubs ---
+      {
+        id: 'isolo_lesson', name: 'Isolo Estate Duplex', arabic: 'دَرْسٌ خُصُوصِيٌّ', x: 560, z: 6.5, radius: 3.5,
         action: 'Teach Private Home Lesson (Earn ₦3,500)',
         onInteract: () => { st().setActivity('homelesson'); },
       },
       {
-        id: 'idimu_mosque', name: 'Idimu Central Mosque', arabic: 'خُطْبَةُ الجُمُعَة', x: -230, z: 6.5, radius: 3.5,
+        id: 'idimu_mosque', name: 'Idimu Central Mosque', arabic: 'خُطْبَةُ الجُمُعَة', x: -540, z: 6.5, radius: 3.5,
         action: 'Deliver Friday Khutbah (Earn ₦6,000)',
         onInteract: () => { st().setActivity('khutbah'); },
       },
@@ -843,14 +1074,23 @@ export const LagosWorld: React.FC = () => {
           say('Dismounted vehicle.');
         } else {
           const up = st().housing.upgrades;
-          if (up.includes('asset_okada')) {
+          if (up.includes('asset_car')) {
+            st().setMount('car');
+            say('Cruising in Toyota Corolla Saloon (24 - 30 m/s)! Press F to dismount.');
+          } else if (up.includes('asset_okada')) {
             st().setMount('okada');
-            say('Mounted Okada (16.5 m/s)! Press F to dismount.');
+            say('Mounted Okada (16.5 - 21 m/s)! Press F to dismount.');
+          } else if (up.includes('asset_keke')) {
+            st().setMount('keke');
+            say('Driving Keke Marwa (13.5 - 18 m/s)! Press F to dismount.');
+          } else if (up.includes('asset_scooter')) {
+            st().setMount('scooter');
+            say('Riding Urban Scooter (12 - 16 m/s)! Press F to dismount.');
           } else if (up.includes('asset_bicycle')) {
             st().setMount('bicycle');
-            say('Mounted Raleigh Bicycle (10.5 m/s)! Press F to dismount.');
+            say('Mounted Raleigh Bicycle (10.5 - 14 m/s)! Press F to dismount.');
           } else {
-            say('You do not own a bicycle or okada yet! Purchase one at the 3D Furnishings store.');
+            say('You do not own a personal vehicle yet! Purchase one at the Lifestyle & Furnishings store.');
           }
         }
       }
@@ -1016,9 +1256,9 @@ export const LagosWorld: React.FC = () => {
 
     const HOUSE_SPAWN: Record<string, { x: number; z: number; label: string }> = {
       ruwaq: { x: 51, z: -8.2, label: 'Ruwaq Madrasah Dormitory' },
-      shared_room: { x: 69, z: -8.8, label: 'Off-Campus Student Room' },
-      mini_flat: { x: 89, z: -8.2, label: 'Self-Contained Mini-Flat' },
-      personal_villa: { x: 113, z: -7.2, label: "Sheikh's Personal Duplex Villa" },
+      shared_room: { x: 180, z: -10.2, label: 'Off-Campus Student Room (Ejigbo)' },
+      mini_flat: { x: 380, z: -10.0, label: 'Self-Contained Mini-Flat (Oke-Afa)' },
+      personal_villa: { x: 540, z: -9.0, label: "Sheikh's Personal Duplex Villa (Isolo)" },
     };
 
     const teleportTo = (nx: number, nz: number, nrot = Math.PI, camDist = 9.0) => {
@@ -1037,6 +1277,7 @@ export const LagosWorld: React.FC = () => {
     let lastTab = st().activeTab;
     let lastTier = st().housing.tier;
     let lastUpgradesKey = st().housing.upgrades.join(',');
+    let lastHonkTime = 0;
 
     // Pause the simulation only when a full modal/drawer covers the world; keep 3D active for School, Classroom, Home & Arrange Mode!
     const isWorldPaused = (s: ReturnType<typeof useGameStore.getState>) =>
@@ -1167,20 +1408,33 @@ export const LagosWorld: React.FC = () => {
       world.windowMats.forEach((m) => (m.emissiveIntensity = night * 1.1));
       world.headMats.forEach((m) => (m.emissiveIntensity = 0.2 + 2 * night));
 
-      // Animate 3D rain drops around the player when raining/storming
+      // Animate 3D rain streaks around the player when raining/storming
       const isRaining = wCond === 'rain' || wCond === 'storm';
-      rainPoints.visible = isRaining;
+      rainLines.visible = isRaining;
       if (isRaining) {
-        rainPoints.position.set(pos.x, 0, pos.z);
+        rainLines.position.set(pos.x, 0, pos.z);
         const attr = rainGeo.getAttribute('position') as THREE.BufferAttribute;
         const arr = attr.array as Float32Array;
-        const dropSpeed = (wCond === 'storm' ? 22 : 16) * dt;
-        const windDrift = (wCond === 'storm' ? 3.5 : 1.2) * dt;
+        const windDrift = (wCond === 'storm' ? 3.0 : 1.0) * dt;
+        const stormMult = wCond === 'storm' ? 1.3 : 1.0;
         for (let i = 0; i < RAIN_COUNT; i++) {
-          arr[i * 3] += windDrift;
-          if (arr[i * 3] > 22) arr[i * 3] -= 44;
-          arr[i * 3 + 1] -= dropSpeed;
-          if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 18 + Math.random() * 4;
+          const d = rainData[i];
+          d.x += windDrift;
+          if (d.x > 22) d.x -= 44;
+          d.y -= d.speed * stormMult * dt;
+          // Recycle well above pavement so no rain particle ever hits or blinks on the ground
+          if (d.y - d.len < 0.35) {
+            d.y = 16 + Math.random() * 5;
+            d.x = (Math.random() - 0.5) * 44;
+            d.z = (Math.random() - 0.5) * 44;
+          }
+          const idx = i * 6;
+          arr[idx] = d.x;
+          arr[idx + 1] = d.y;
+          arr[idx + 2] = d.z;
+          arr[idx + 3] = d.x - windDrift * 0.15;
+          arr[idx + 4] = d.y - d.len;
+          arr[idx + 5] = d.z;
         }
         attr.needsUpdate = true;
       }
@@ -1191,14 +1445,14 @@ export const LagosWorld: React.FC = () => {
         const x0 = STOP_X[activeRide.from];
         const x1 = STOP_X[activeRide.to];
         const dir: 1 | -1 = x1 >= x0 ? 1 : -1;
-        const laneZ = dir === 1 ? 11.6 : 16.4;
+        const laneZ = dir === 1 ? 10.8 : 23.6;
         const dist = Math.abs(x1 - x0);
         const busSpeed = 9.5; // metres per second (~21s to Isolo, ~26s to Idimu)
         const nextP = activeRide.progress + (busSpeed * dt) / Math.max(10, dist);
         if (nextP >= 1) {
           world.rideBus.group.visible = false;
           pos.x = x1;
-          pos.z = 9.4;
+          pos.z = 8.2;
           pos.rot = Math.PI;
           playerChar.group.position.set(pos.x, 0, pos.z);
           playerChar.setPose('idle');
@@ -1227,6 +1481,9 @@ export const LagosWorld: React.FC = () => {
         const curMount = st().mount;
         riderBike.visible = curMount === 'bicycle';
         riderMoto.visible = curMount === 'okada';
+        riderScooter.visible = curMount === 'scooter';
+        riderKeke.visible = curMount === 'keke';
+        riderCar.visible = curMount === 'car';
 
         let ix = (keys['arrowright'] ? 1 : 0) - (keys['arrowleft'] ? 1 : 0) + joyRef.current.x;
         let iz = (keys['arrowdown'] ? 1 : 0) - (keys['arrowup'] ? 1 : 0) + joyRef.current.y;
@@ -1247,7 +1504,18 @@ export const LagosWorld: React.FC = () => {
           const rightZ = -Math.sin(cam.yaw);
           const dx = rightX * ix + fwdX * -iz;
           const dz = rightZ * ix + fwdZ * -iz;
-          const baseSpd = curMount === 'okada' ? (sprint ? 21.0 : 16.5) : curMount === 'bicycle' ? (sprint ? 14.0 : 10.5) : (sprint ? 8.5 : 4.8);
+          const baseSpd =
+            curMount === 'car'
+              ? (sprint ? 30.0 : 24.0)
+              : curMount === 'okada'
+              ? (sprint ? 21.0 : 16.5)
+              : curMount === 'keke'
+              ? (sprint ? 18.0 : 13.5)
+              : curMount === 'scooter'
+              ? (sprint ? 16.0 : 12.0)
+              : curMount === 'bicycle'
+              ? (sprint ? 14.0 : 10.5)
+              : (sprint ? 8.5 : 4.8);
           const speed = baseSpd * analog * dt;
           pos.x += dx * speed;
           pos.z += dz * speed;
@@ -1256,8 +1524,16 @@ export const LagosWorld: React.FC = () => {
             bikeWheels.forEach((w) => (w.rotation.x -= speed * 3.1));
           } else if (curMount === 'okada') {
             motoWheels.forEach((w) => (w.rotation.x -= speed * 2.7));
+          } else if (curMount === 'scooter') {
+            scooterWheels.forEach((w) => (w.rotation.x -= speed * 5.0));
+          } else if (curMount === 'keke') {
+            kekeWheels.forEach((w) => (w.rotation.x -= speed * 2.4));
+          } else if (curMount === 'car') {
+            carWheels.forEach((w) => (w.rotation.x -= speed * 2.2));
           }
 
+          // Static Colliders Pass (Median curbs, buildings, walls, school fences)
+          const colR = curMount === 'car' ? 1.35 : curMount === 'keke' ? 0.95 : R;
           for (let pass = 0; pass < 2; pass++) {
             for (const c of world.colliders) {
               const cx = THREE.MathUtils.clamp(pos.x, c.minX, c.maxX);
@@ -1265,35 +1541,63 @@ export const LagosWorld: React.FC = () => {
               const ddx = pos.x - cx;
               const ddz = pos.z - cz;
               const d2 = ddx * ddx + ddz * ddz;
-              if (d2 < R * R) {
+              if (d2 < colR * colR) {
                 if (d2 > 1e-6) {
                   const d = Math.sqrt(d2);
-                  pos.x = cx + (ddx / d) * R;
-                  pos.z = cz + (ddz / d) * R;
+                  pos.x = cx + (ddx / d) * colR;
+                  pos.z = cz + (ddz / d) * colR;
                 } else {
                   const left = pos.x - c.minX;
                   const right = c.maxX - pos.x;
                   const top = pos.z - c.minZ;
                   const bottom = c.maxZ - pos.z;
                   const m = Math.min(left, right, top, bottom);
-                  if (m === left) pos.x = c.minX - R;
-                  else if (m === right) pos.x = c.maxX + R;
-                  else if (m === top) pos.z = c.minZ - R;
-                  else pos.z = c.maxZ + R;
+                  if (m === left) pos.x = c.minX - colR;
+                  else if (m === right) pos.x = c.maxX + colR;
+                  else if (m === top) pos.z = c.minZ - colR;
+                  else pos.z = c.maxZ + colR;
                 }
               }
             }
           }
-          // Enforce locked house interiors so players cannot enter houses they haven't rented or bought
-          const curTier = st().housing.tier;
-          if (curTier !== 'shared_room' && pos.x > 62.5 && pos.x < 75.5 && pos.z < -5.8 && pos.z > -18.2) {
-            pos.z = -5.2;
+
+          // Dynamic Vehicle Barrier Collisions: Solid obstacles preventing walking or driving through moving traffic
+          let vehicleHit = false;
+          for (const v of world.vehicles) {
+            const vx = v.group.position.x;
+            const vz = v.group.position.z;
+            const halfW = (v.width || 4.5) / 2 + (curMount === 'car' ? 1.2 : curMount === 'keke' ? 0.8 : R);
+            const halfD = (v.depth || 2.2) / 2 + (curMount === 'car' ? 1.0 : curMount === 'keke' ? 0.7 : R);
+
+            const minX = vx - halfW;
+            const maxX = vx + halfW;
+            const minZ = vz - halfD;
+            const maxZ = vz + halfD;
+
+            if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+              vehicleHit = true;
+              const left = pos.x - minX;
+              const right = maxX - pos.x;
+              const top = pos.z - minZ;
+              const bottom = maxZ - pos.z;
+              const m = Math.min(left, right, top, bottom);
+              if (m === left) pos.x = minX;
+              else if (m === right) pos.x = maxX;
+              else if (m === top) pos.z = minZ;
+              else pos.z = maxZ;
+            }
           }
-          if (curTier !== 'mini_flat' && pos.x > 81.0 && pos.x < 97.0 && pos.z < -5.3 && pos.z > -18.8) {
-            pos.z = -4.7;
-          }
-          if (curTier !== 'personal_villa' && pos.x > 103.0 && pos.x < 123.0 && pos.z < -4.3 && pos.z > -19.8) {
-            pos.z = -3.7;
+          if (vehicleHit && time - lastHonkTime > 2.0) {
+            lastHonkTime = time;
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(35);
+            sound.playHorn();
+            const honks = [
+              '📢 Danfo Conductor: "Ehn! Commot for road joor! You wan die?!"',
+              '🚗 Driver: "Heeey! Look road well! No break my bumper!"',
+              '🛺 Keke Driver: "Oga watch front! You wan scratch my motor?!"',
+              '💥 Solid Collision! You cannot pass through moving traffic.',
+            ];
+            say(honks[Math.floor(Math.random() * honks.length)]);
           }
 
           pos.x = THREE.MathUtils.clamp(pos.x, X_MIN, X_MAX);
@@ -1305,6 +1609,15 @@ export const LagosWorld: React.FC = () => {
           } else if (curMount === 'okada') {
             pos.y = 0.36;
             playerChar.setPose('ride_moto');
+          } else if (curMount === 'scooter') {
+            pos.y = 0.22;
+            playerChar.setPose('ride_scooter');
+          } else if (curMount === 'keke') {
+            pos.y = 0.32;
+            playerChar.setPose('sit');
+          } else if (curMount === 'car') {
+            pos.y = 0.36;
+            playerChar.setPose('drive_car');
           } else {
             pos.y = 0;
             if (customPose !== 'idle') applyPose('idle', 0);
@@ -1317,6 +1630,15 @@ export const LagosWorld: React.FC = () => {
           } else if (curMount === 'okada') {
             pos.y = 0.36;
             playerChar.setPose('ride_moto');
+          } else if (curMount === 'scooter') {
+            pos.y = 0.22;
+            playerChar.setPose('ride_scooter');
+          } else if (curMount === 'keke') {
+            pos.y = 0.32;
+            playerChar.setPose('sit');
+          } else if (curMount === 'car') {
+            pos.y = 0.36;
+            playerChar.setPose('drive_car');
           } else {
             playerChar.setPose(time < emoteUntil ? 'wave' : customPose);
           }
@@ -1352,13 +1674,7 @@ export const LagosWorld: React.FC = () => {
       for (const rotor of world.fanRotors) {
         rotor.rotation.y += dt * 11;
       }
-      for (const v of world.vehicles) {
-        v.group.position.x += v.dir * v.speed * dt;
-        if (v.dir === 1 && v.group.position.x > v.maxX) v.group.position.x = v.minX;
-        if (v.dir === -1 && v.group.position.x < v.minX) v.group.position.x = v.maxX;
-        const spin = (v.speed * dt) / v.wheelR;
-        v.wheels.forEach((w) => (w.rotation.z -= spin));
-      }
+      for (const v of world.vehicles) advanceVehicle(v, dt);
 
       // --- 3D selection indicator for arranging room ---
       if (st().roomOverlay === 'arrange_furniture') {
@@ -1468,17 +1784,25 @@ export const LagosWorld: React.FC = () => {
         mapCtx.fillStyle = '#b45309';
         mapCtx.fillRect(mx(44.5), mz(-17.5), mx(57.5) - mx(44.5), mz(-6.5) - mz(-17.5));
         mapCtx.fillStyle = '#0284c7';
-        mapCtx.fillRect(mx(63.5), mz(-17), mx(74.5) - mx(63.5), mz(-7) - mz(-17));
+        mapCtx.fillRect(mx(173.5), mz(-17.5), mx(186.5) - mx(173.5), mz(-6.5) - mz(-17.5));
         mapCtx.fillStyle = '#7c3aed';
-        mapCtx.fillRect(mx(82), mz(-18), mx(96) - mx(82), mz(-6) - mz(-18));
+        mapCtx.fillRect(mx(372), mz(-18), mx(388) - mx(372), mz(-6) - mz(-18));
         mapCtx.fillStyle = '#eab308';
-        mapCtx.fillRect(mx(104), mz(-19), mx(122) - mx(104), mz(-5) - mz(-19));
+        mapCtx.fillRect(mx(530), mz(-19), mx(550) - mx(530), mz(-5) - mz(-19));
         mapCtx.fillStyle = '#16a34a';
         mapCtx.fillRect(mx(-30), mz(-8.5), mx(-19) - mx(-30), mz(4.5) - mz(-8.5));
         mapCtx.fillStyle = '#8a6a3a';
         mapCtx.fillRect(mx(-39.5), mz(-26), mx(-15.5) - mx(-39.5), mz(-11) - mz(-26));
+        // Widened 4-lane Highway
         mapCtx.fillStyle = '#2a2c32';
-        mapCtx.fillRect(0, mz(10.5), MAP_W, mz(17.5) - mz(10.5));
+        mapCtx.fillRect(0, mz(8.8), MAP_W, mz(25.6) - mz(8.8));
+        // Median divider & U-turn breaks
+        mapCtx.fillStyle = '#475569';
+        mapCtx.fillRect(0, mz(16.8), MAP_W, mz(17.6) - mz(16.8));
+        mapCtx.fillStyle = '#2a2c32';
+        for (const ux of [-500, -380, -240, -100, 0, 110, 200, 290, 400, 520]) {
+          mapCtx.fillRect(mx(ux - 6), mz(16.7), mx(ux + 6) - mx(ux - 6), mz(17.7) - mz(16.7));
+        }
         mapCtx.fillStyle = '#38bdf8';
         mapCtx.fillRect(mx(-8), mz(-13), mx(8) - mx(-8), mz(-4.9) - mz(-13));
         mapCtx.fillStyle = '#ffc61a';
@@ -1674,28 +1998,65 @@ export const LagosWorld: React.FC = () => {
             className="px-2.5 py-1 rounded-lg font-bold bg-amber-400 text-stone-950 shadow-md cursor-pointer flex items-center gap-1 animate-pulse"
             title="Dismount Vehicle (F)"
           >
-            <span>{mount === 'okada' ? '🏍️ Dismount' : '🚲 Dismount'}</span>
+            <span>
+              {mount === 'car' ? '🚗 Dismount' : mount === 'keke' ? '🛺 Dismount' : mount === 'okada' ? '🏍️ Dismount' : mount === 'scooter' ? '⚡ Dismount' : '🚲 Dismount'}
+            </span>
             <kbd className="text-[9px] opacity-70 bg-black/20 px-1 rounded">F</kbd>
           </button>
-        ) : housing.upgrades.includes('asset_okada') ? (
-          <button
-            onClick={() => setMount('okada')}
-            className="px-2 py-1 rounded-lg font-bold text-amber-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
-            title="Ride Okada (F)"
-          >
-            <span>🏍️ Okada</span>
-            <kbd className="text-[9px] opacity-60">F</kbd>
-          </button>
-        ) : housing.upgrades.includes('asset_bicycle') ? (
-          <button
-            onClick={() => setMount('bicycle')}
-            className="px-2 py-1 rounded-lg font-bold text-emerald-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
-            title="Ride Bicycle (F)"
-          >
-            <span>🚲 Bicycle</span>
-            <kbd className="text-[9px] opacity-60">F</kbd>
-          </button>
-        ) : null}
+        ) : (
+          <>
+            {housing.upgrades.includes('asset_car') && (
+              <button
+                onClick={() => setMount('car')}
+                className="px-2 py-1 rounded-lg font-bold text-blue-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+                title="Drive Corolla Car (F)"
+              >
+                <span>🚗 Car</span>
+                <kbd className="text-[9px] opacity-60">F</kbd>
+              </button>
+            )}
+            {housing.upgrades.includes('asset_keke') && (
+              <button
+                onClick={() => setMount('keke')}
+                className="px-2 py-1 rounded-lg font-bold text-yellow-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+                title="Drive Keke (F)"
+              >
+                <span>🛺 Keke</span>
+                <kbd className="text-[9px] opacity-60">F</kbd>
+              </button>
+            )}
+            {housing.upgrades.includes('asset_okada') && (
+              <button
+                onClick={() => setMount('okada')}
+                className="px-2 py-1 rounded-lg font-bold text-amber-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+                title="Ride Okada (F)"
+              >
+                <span>🏍️ Okada</span>
+                <kbd className="text-[9px] opacity-60">F</kbd>
+              </button>
+            )}
+            {housing.upgrades.includes('asset_scooter') && (
+              <button
+                onClick={() => setMount('scooter')}
+                className="px-2 py-1 rounded-lg font-bold text-cyan-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+                title="Ride Scooter (F)"
+              >
+                <span>⚡ Scooter</span>
+                <kbd className="text-[9px] opacity-60">F</kbd>
+              </button>
+            )}
+            {housing.upgrades.includes('asset_bicycle') && (
+              <button
+                onClick={() => setMount('bicycle')}
+                className="px-2 py-1 rounded-lg font-bold text-emerald-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center gap-1"
+                title="Ride Bicycle (F)"
+              >
+                <span>🚲 Bicycle</span>
+                <kbd className="text-[9px] opacity-60">F</kbd>
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {/* Touch controls: joystick (left) */}
@@ -1749,11 +2110,35 @@ export const LagosWorld: React.FC = () => {
                 aria-label="Dismount Vehicle"
                 title="Dismount"
               >
-                <span className="text-xl leading-none">{mount === 'okada' ? '🏍️' : '🚲'}</span>
+                <span className="text-xl leading-none">
+                  {mount === 'car' ? '🚗' : mount === 'keke' ? '🛺' : mount === 'okada' ? '🏍️' : mount === 'scooter' ? '⚡' : '🚲'}
+                </span>
                 <span className="text-[9px] uppercase font-bold tracking-tight">Dismount</span>
               </button>
             ) : (
               <>
+                {housing.upgrades.includes('asset_car') && (
+                  <button
+                    onClick={() => setMount('car')}
+                    className="kw-glass w-13 h-13 cursor-pointer flex flex-col items-center justify-center text-blue-300 font-bold hover:bg-white/10 rounded-2xl"
+                    aria-label="Drive Car"
+                    title="Drive Car"
+                  >
+                    <span className="text-lg leading-none">🚗</span>
+                    <span className="text-[8.5px] uppercase font-bold text-blue-200">Car</span>
+                  </button>
+                )}
+                {housing.upgrades.includes('asset_keke') && (
+                  <button
+                    onClick={() => setMount('keke')}
+                    className="kw-glass w-13 h-13 cursor-pointer flex flex-col items-center justify-center text-yellow-300 font-bold hover:bg-white/10 rounded-2xl"
+                    aria-label="Drive Keke"
+                    title="Drive Keke"
+                  >
+                    <span className="text-lg leading-none">🛺</span>
+                    <span className="text-[8.5px] uppercase font-bold text-yellow-200">Keke</span>
+                  </button>
+                )}
                 {housing.upgrades.includes('asset_okada') && (
                   <button
                     onClick={() => setMount('okada')}
@@ -1763,6 +2148,17 @@ export const LagosWorld: React.FC = () => {
                   >
                     <span className="text-lg leading-none">🏍️</span>
                     <span className="text-[8.5px] uppercase font-bold text-amber-200">Okada</span>
+                  </button>
+                )}
+                {housing.upgrades.includes('asset_scooter') && (
+                  <button
+                    onClick={() => setMount('scooter')}
+                    className="kw-glass w-13 h-13 cursor-pointer flex flex-col items-center justify-center text-cyan-300 font-bold hover:bg-white/10 rounded-2xl"
+                    aria-label="Ride Scooter"
+                    title="Ride Scooter"
+                  >
+                    <span className="text-lg leading-none">⚡</span>
+                    <span className="text-[8.5px] uppercase font-bold text-cyan-200">Scooter</span>
                   </button>
                 )}
                 {housing.upgrades.includes('asset_bicycle') && (
@@ -1881,6 +2277,9 @@ export const LagosWorld: React.FC = () => {
               },
               ...(housing.upgrades.includes('asset_fan') ? [{ id: 'fan', label: 'Standing Fan', fullName: 'Standing OX Fan', icon: '🌀' }] : []),
               ...(housing.upgrades.includes('asset_maktabah') ? [{ id: 'maktabah', label: 'Bookshelf', fullName: 'Maktabah Bookshelf', icon: '📚' }] : []),
+              ...(housing.upgrades.includes('asset_ac') ? [{ id: 'ac', label: 'AC Unit', fullName: 'Inverter Air Conditioner', icon: '❄️' }] : []),
+              ...(housing.upgrades.includes('asset_rehal') ? [{ id: 'rehal', label: 'Rehal Stand', fullName: 'Hardwood Rehal & Mushaf', icon: '📖' }] : []),
+              ...(housing.upgrades.includes('asset_whiteboard') ? [{ id: 'whiteboard', label: 'Whiteboard', fullName: 'Revision Wall Whiteboard', icon: '📋' }] : []),
             ];
 
             const activePieceId = pieces.some((p) => p.id === selectedFurniture) ? selectedFurniture : pieces[0].id;

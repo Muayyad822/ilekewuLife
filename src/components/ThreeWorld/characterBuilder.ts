@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export type CapStyle = 'kofia' | 'turban' | 'hijab' | 'fila' | 'none';
-export type Prop = 'book' | 'cane' | 'kettle' | 'tesbih' | 'none';
+export type Prop = 'book' | 'cane' | 'kettle' | 'tesbih' | 'sandals' | 'attar' | 'miswak' | 'walaha' | 'qalam' | 'none';
 export type Pose =
   | 'idle'
   | 'walk'
@@ -16,7 +16,9 @@ export type Pose =
   | 'wave'
   | 'alfa'
   | 'ride_bike'
-  | 'ride_moto';
+  | 'ride_moto'
+  | 'ride_scooter'
+  | 'drive_car';
 
 export interface CharacterOptions {
   robe: number;
@@ -140,6 +142,18 @@ export function buildCharacter(o: CharacterOptions): Character {
   } else if (prop === 'tesbih') {
     const t = add(armL, new THREE.TorusGeometry(0.05, 0.012, 6, 12), M(0x3b2f1e, 0.6), 0, -0.6, 0.02);
     t.rotation.y = Math.PI / 2;
+  } else if (prop === 'walaha') {
+    const w = add(armR, new THREE.BoxGeometry(0.26, 0.36, 0.025), M(0xcab388, 0.8), 0.02, -0.52, 0.14);
+    w.rotation.x = -0.2;
+    add(w, new THREE.BoxGeometry(0.2, 0.28, 0.028), M(0x18181b, 0.9), 0, 0, 0);
+  } else if (prop === 'miswak') {
+    const m = add(armR, new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6), M(0xd97706, 0.7), 0, -0.55, 0.08);
+    m.rotation.x = Math.PI / 3;
+  } else if (prop === 'attar') {
+    add(armR, new THREE.CylinderGeometry(0.025, 0.03, 0.08, 8), M(0x10b981, 0.3), 0, -0.55, 0.04);
+  } else if (prop === 'qalam') {
+    const q = add(armR, new THREE.CylinderGeometry(0.008, 0.012, 0.22, 6), M(0x78350f, 0.8), 0, -0.55, 0.1);
+    q.rotation.x = Math.PI / 2.6;
   }
 
   // ---- Legs (hip pivots + knee joints) ----
@@ -173,7 +187,14 @@ export function buildCharacter(o: CharacterOptions): Character {
   let pose: Pose = 'idle';
   const phase = o.phase ?? Math.random() * 10;
   const cur = { lx: 0, lz: 0, rx: 0, rz: 0, legL: 0, legR: 0, bodyY: 0, bodyZ: 0, lean: 0, sit: 0, headY: 0 };
-  const holdsRight = prop === 'book' || prop === 'kettle' || prop === 'cane';
+  const holdsRight =
+    prop === 'book' ||
+    prop === 'kettle' ||
+    prop === 'cane' ||
+    prop === 'walaha' ||
+    prop === 'miswak' ||
+    prop === 'attar' ||
+    prop === 'qalam';
 
   const update = (t: number, dt: number) => {
     const k = 1 - Math.exp(-dt * 10);
@@ -227,6 +248,28 @@ export function buildCharacter(o: CharacterOptions): Character {
         tg.rz = -0.28;
         tg.legL = -0.35;
         tg.legR = -0.35;
+        break;
+      }
+      case 'ride_scooter': {
+        tg.sit = 0;
+        tg.bodyY = 0.02;
+        tg.lean = 0.05;
+        tg.lx = -0.75;
+        tg.rx = -0.75;
+        tg.lz = 0.18;
+        tg.rz = -0.18;
+        tg.legL = 0.08;
+        tg.legR = -0.12;
+        break;
+      }
+      case 'drive_car': {
+        tg.sit = 1;
+        tg.bodyY = -0.08;
+        tg.lean = 0.12;
+        tg.lx = -0.88;
+        tg.rx = -0.88;
+        tg.lz = 0.26;
+        tg.rz = -0.26;
         break;
       }
       case 'sit':
@@ -329,16 +372,22 @@ export function buildCharacter(o: CharacterOptions): Character {
     body.rotation.x = cur.lean;
     head.rotation.y = cur.headY;
 
-    const sittingOnFloor = cur.sit > 0.5 && pose !== 'chair_sit';
-    skirt.visible = sittingOnFloor && pose !== 'sleep' && pose !== 'ride_bike' && pose !== 'ride_moto';
+    const sittingOnFloor = cur.sit > 0.5 && pose !== 'chair_sit' && pose !== 'drive_car';
+    skirt.visible =
+      sittingOnFloor &&
+      pose !== 'sleep' &&
+      pose !== 'ride_bike' &&
+      pose !== 'ride_moto' &&
+      pose !== 'ride_scooter' &&
+      pose !== 'drive_car';
     legL.hip.visible = !sittingOnFloor;
     legR.hip.visible = !sittingOnFloor;
 
-    if (pose === 'chair_sit') {
-      legL.hip.rotation.x = -Math.PI / 2 + 0.05;
-      legR.hip.rotation.x = -Math.PI / 2 + 0.05;
-      legL.knee.rotation.x = Math.PI / 2 - 0.05;
-      legR.knee.rotation.x = Math.PI / 2 - 0.05;
+    if (pose === 'chair_sit' || pose === 'drive_car') {
+      legL.hip.rotation.x = -Math.PI / 2 + 0.08;
+      legR.hip.rotation.x = -Math.PI / 2 + 0.08;
+      legL.knee.rotation.x = Math.PI / 2 - 0.08;
+      legR.knee.rotation.x = Math.PI / 2 - 0.08;
     } else if (pose === 'ride_bike') {
       legL.hip.rotation.x = -0.7 + cur.legL * 0.4;
       legR.hip.rotation.x = -0.7 + cur.legR * 0.4;
@@ -349,6 +398,11 @@ export function buildCharacter(o: CharacterOptions): Character {
       legR.hip.rotation.x = -0.72;
       legL.knee.rotation.x = 0.78;
       legR.knee.rotation.x = 0.78;
+    } else if (pose === 'ride_scooter') {
+      legL.hip.rotation.x = 0.06;
+      legR.hip.rotation.x = -0.16;
+      legL.knee.rotation.x = 0;
+      legR.knee.rotation.x = 0.12;
     } else {
       legL.hip.rotation.x = cur.legL;
       legR.hip.rotation.x = cur.legR;

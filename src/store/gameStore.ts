@@ -59,8 +59,13 @@ export type TabId = 'compound' | 'classroom' | 'home' | 'profile' | 'minbar';
 
 export const LOC_META: Record<Loc, { name: string; fare: number }> = {
   school: { name: 'MAHD IQRA, Ejigbo', fare: 200 },
-  east: { name: 'Isolo Estate (Home Lesson)', fare: 300 },
-  west: { name: 'Idimu Central Mosque', fare: 300 },
+  east: { name: 'Isolo Estate (Home Lesson)', fare: 350 },
+  west: { name: 'Idimu Central Mosque', fare: 400 },
+  ejigbo: { name: 'Ejigbo Junction (Off-Campus Room)', fare: 150 },
+  oke_afa: { name: 'Oke-Afa Bridge (Mini-Flat)', fare: 250 },
+  isolo: { name: 'Isolo Estate (Sheikh Villa & Home Lesson)', fare: 350 },
+  bucknor: { name: 'Bucknor Market Junction', fare: 200 },
+  idimu: { name: 'Idimu Central Mosque', fare: 400 },
 };
 
 const stageFor = (age: number, ilm: number): LifeStage => {
@@ -728,7 +733,13 @@ export const useGameStore = create<GameState>()(
     const prop = HOUSING_TIERS.find((h) => h.id === housing.tier) ?? HOUSING_TIERS[0];
     const hasDesk = housing.upgrades.includes('asset_desk');
     const hasMaktabah = housing.upgrades.includes('asset_maktabah');
-    const extraIlm = (hasDesk ? 2 : 0) + (hasMaktabah ? 4 : 0);
+    const hasRehal = housing.upgrades.includes('asset_rehal');
+    const hasWhiteboard = housing.upgrades.includes('asset_whiteboard');
+    const extraIlm =
+      (hasDesk ? 2 : 0) +
+      (hasMaktabah ? 4 : 0) +
+      (hasRehal ? 2 : 0) +
+      (hasWhiteboard ? 3 : 0);
 
     const baseIlm = Math.max(2, correct * 3 + extraIlm);
     const ilmGain = alreadyDoneToday
@@ -790,10 +801,25 @@ export const useGameStore = create<GameState>()(
   },
 
   getBusFare: (to) => {
-    const base = LOC_META[to].fare;
+    const base = LOC_META[to]?.fare ?? 200;
     const { housing } = get();
-    if (housing.upgrades.includes('asset_okada')) return 0;
-    if (housing.upgrades.includes('asset_bicycle')) return Math.round(base * 0.5);
+    // If player owns any motorized vehicle, travel is 100% free!
+    if (
+      housing.upgrades.includes('asset_okada') ||
+      housing.upgrades.includes('asset_keke') ||
+      housing.upgrades.includes('asset_car') ||
+      housing.upgrades.includes('asset_scooter')
+    ) {
+      return 0;
+    }
+    // Ferry / transit pass grants 75% discount
+    if (housing.upgrades.includes('asset_ferry_pass')) {
+      return Math.round(base * 0.25);
+    }
+    // Bicycle cuts transit fare in half
+    if (housing.upgrades.includes('asset_bicycle')) {
+      return Math.round(base * 0.5);
+    }
     return base;
   },
 
@@ -1059,7 +1085,15 @@ export const useGameStore = create<GameState>()(
     const hasDesk = housing.upgrades.includes('asset_desk');
     const hasMaktabah = housing.upgrades.includes('asset_maktabah');
     const hasSolar = housing.upgrades.includes('asset_solar');
-    const ilmGain = 4 + (hasDesk ? 2 : 0) + (hasMaktabah ? 4 : 0) + (hasSolar ? 2 : 0);
+    const hasRehal = housing.upgrades.includes('asset_rehal');
+    const hasWhiteboard = housing.upgrades.includes('asset_whiteboard');
+    const ilmGain =
+      4 +
+      (hasDesk ? 2 : 0) +
+      (hasMaktabah ? 4 : 0) +
+      (hasSolar ? 2 : 0) +
+      (hasRehal ? 2 : 0) +
+      (hasWhiteboard ? 3 : 0);
     const nextIlm = clamp(player.stats.ilm + ilmGain);
     set({
       player: {

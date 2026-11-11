@@ -197,6 +197,31 @@ class SoundEngine {
     noise.start();
     noise.stop(this.ctx.currentTime + 0.3);
   }
+
+  // Lagos Vehicle Horn Honk (Danfo / Car / Okada)
+  public playHorn() {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const tones = [420, 345];
+    tones.forEach((freq) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, this.ctx!.currentTime);
+
+      gain.gain.setValueAtTime(0.18, this.ctx!.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx!.currentTime + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(this.ctx!.currentTime);
+      osc.stop(this.ctx!.currentTime + 0.28);
+    });
+  }
 }
 
 export const sound = new SoundEngine();

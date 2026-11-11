@@ -495,23 +495,41 @@ const BusView: React.FC = () => {
 
   const routes: { to: Loc; title: string; subtitle: string; badge: string; locked?: string }[] = [
     {
+      to: 'idimu',
+      title: LOC_META.idimu.name,
+      subtitle: 'Ride west to deliver the Friday Khutbah at Idimu Central Mosque (Earn up to ₦6,000)!',
+      badge: `Fare ₦${getBusFare('idimu')}`,
+      locked: owned.includes('riyad') ? undefined : `Requires ${BOOK_NAMES.riyad}`,
+    },
+    {
+      to: 'bucknor',
+      title: LOC_META.bucknor.name,
+      subtitle: 'Bucknor junction, Master Ganiyu mechanic workshop & Victory Chemist.',
+      badge: `Fare ₦${getBusFare('bucknor')}`,
+    },
+    {
       to: 'school',
       title: LOC_META.school.name,
-      subtitle: 'Return to the Madrasah compound, classes, well and street stalls.',
+      subtitle: 'Return to the Madrasah compound, Halqah, well, Ruwaq dorm, and Iya Basira buka.',
       badge: `Fare ₦${getBusFare('school')}`,
     },
     {
-      to: 'east',
-      title: LOC_META.east.name,
-      subtitle: 'Ride east to teach private Arabic & Fiqh home lessons for up to ₦3,500!',
-      badge: `Fare ₦${getBusFare('east')} · Earn ₦3,500`,
+      to: 'ejigbo',
+      title: LOC_META.ejigbo.name,
+      subtitle: 'Ejigbo junction commercial strip, Suya spot, and Off-Campus student apartments.',
+      badge: `Fare ₦${getBusFare('ejigbo')}`,
     },
     {
-      to: 'west',
-      title: LOC_META.west.name,
-      subtitle: 'Ride west to deliver the Friday Khutbah & lead congregation for up to ₦6,000!',
-      badge: `Fare ₦${getBusFare('west')} · Earn ₦6,000`,
-      locked: owned.includes('riyad') ? undefined : `Requires ${BOOK_NAMES.riyad}`,
+      to: 'oke_afa',
+      title: LOC_META.oke_afa.name,
+      subtitle: 'Oke-Afa canal, Alhaja Kudirat tailor boutique, and Self-Contained Mini-Flats.',
+      badge: `Fare ₦${getBusFare('oke_afa')}`,
+    },
+    {
+      to: 'isolo',
+      title: LOC_META.isolo.name,
+      subtitle: 'Isolo terminal, Sheikhs Personal Villa, and private Arabic Home Lessons (Earn ₦3,500)!',
+      badge: `Fare ₦${getBusFare('isolo')}`,
     },
   ];
 
@@ -586,6 +604,85 @@ const BusView: React.FC = () => {
         >
           Go to Home Quarters
         </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Reusable Roadside Commercial Shop Modal
+// ============================================================================
+const RoadsideShopModal: React.FC<{
+  title: string;
+  vendorName: string;
+  tagline: string;
+  items: {
+    id: string;
+    name: string;
+    icon: string;
+    price: number;
+    desc: string;
+    benefit: { energy?: number; pasanResistance?: number; barakah?: number; taqwa?: number };
+  }[];
+  onClose: () => void;
+}> = ({ vendorName, tagline, items, onClose }) => {
+  const naira = useGameStore((s) => s.player.stats.naira);
+  const spend = useGameStore((s) => s.spend);
+  const [toast, setToast] = useState<string | null>(null);
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+        <div>
+          <h3 className="font-extrabold text-base text-stone-900">{vendorName}</h3>
+          <p className="text-xs text-stone-500">{tagline}</p>
+        </div>
+        <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-900">
+          ₦{naira.toLocaleString()}
+        </span>
+      </div>
+
+      {toast && (
+        <div className="text-xs font-bold bg-amber-50 border border-amber-300 text-amber-950 p-3 rounded-xl flex items-center justify-between">
+          <span>{toast}</span>
+          <button onClick={() => setToast(null)} className="text-stone-500 hover:text-stone-800 ml-2 cursor-pointer">
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items.map((it) => (
+          <div
+            key={it.id}
+            className="p-3.5 rounded-2xl border border-stone-200 bg-white flex flex-col justify-between gap-3 shadow-2xs hover:border-amber-400 transition"
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-3xl shrink-0 p-1.5 rounded-xl bg-stone-100">{it.icon}</span>
+              <div>
+                <h4 className="font-extrabold text-sm text-stone-900">{it.name}</h4>
+                <p className="text-xs text-stone-500 mt-0.5 leading-snug">{it.desc}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t border-stone-100 pt-2.5">
+              <span className="font-mono text-xs font-extrabold text-stone-800">₦{it.price.toLocaleString()}</span>
+              <button
+                onClick={() => {
+                  const ok = spend(it.price, it.benefit, `Bought ${it.name} at ${vendorName}`);
+                  if (ok) {
+                    sound.playCoin();
+                    setToast(`Bought ${it.name}! Enjoy!`);
+                  } else {
+                    setToast(`Not enough Naira! You need ₦${it.price.toLocaleString()}.`);
+                  }
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs cursor-pointer shadow-2xs active:scale-95"
+              >
+                Buy
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -928,6 +1025,182 @@ export const ActivityModal: React.FC = () => {
   } else if (activity === 'bus') {
     title = 'Danfo Bus Stop — Lagos Transit';
     body = <BusView />;
+  } else if (activity === 'suya') {
+    title = 'Aboki Mallam Musa Suya Spot';
+    body = (
+      <RoadsideShopModal
+        title="Aboki Suya Spot"
+        vendorName="Mallam Musa Mai Suya"
+        tagline="Fresh hot Lagos suya, kilishi & masa grilled over glowing firewood coals."
+        items={[
+          {
+            id: 'beef_suya',
+            name: 'Beef Suya Skewer',
+            icon: '🍢',
+            price: 400,
+            desc: 'Tender beef grilled with spicy yaji pepper, sliced onions and fresh cabbage.',
+            benefit: { energy: 25, barakah: 1 },
+          },
+          {
+            id: 'kilishi',
+            name: 'Spicy Kilishi Sheet',
+            icon: '🥩',
+            price: 350,
+            desc: 'Crisp sun-dried seasoned beef sheet with rich peanut paste & chili.',
+            benefit: { energy: 18, barakah: 1 },
+          },
+          {
+            id: 'masa',
+            name: 'Grilled Masa Cakes (x3)',
+            icon: '🍘',
+            price: 250,
+            desc: 'Puffy fermented rice cakes grilled soft with honey & suya spice.',
+            benefit: { energy: 16 },
+          },
+          {
+            id: 'malt',
+            name: 'Chilled Malta Drink',
+            icon: '🥤',
+            price: 300,
+            desc: 'Refreshing ice-cold non-alcoholic malt drink for quick energy.',
+            benefit: { energy: 15 },
+          },
+        ]}
+        onClose={close}
+      />
+    );
+  } else if (activity === 'provisions') {
+    title = 'Mummy Chidinma Provisions Store';
+    body = (
+      <RoadsideShopModal
+        title="Mummy Chidinma Store"
+        vendorName="Mummy Chidinma Super Stores"
+        tagline="Daily student provisions, cold drinks, biscuits, milk & study batteries."
+        items={[
+          {
+            id: 'pure_water',
+            name: 'Chilled Pure Water (x5)',
+            icon: '💧',
+            price: 100,
+            desc: 'Cold sachet water to quench thirst while trekking along the highway.',
+            benefit: { energy: 10 },
+          },
+          {
+            id: 'milo_cup',
+            name: 'Hot Milo & Peak Milk',
+            icon: '☕',
+            price: 350,
+            desc: 'Steaming cup of chocolate Milo enriched with creamy evaporated milk.',
+            benefit: { energy: 22 },
+          },
+          {
+            id: 'cabin_biscuits',
+            name: 'Oxford Cabin Biscuits',
+            icon: '🍪',
+            price: 250,
+            desc: 'Crunchy square biscuits to snack on during late-night Muraja’ah.',
+            benefit: { energy: 16 },
+          },
+          {
+            id: 'torch_battery',
+            name: 'Tiger Torch Batteries',
+            icon: '🔋',
+            price: 300,
+            desc: 'Two D-cell batteries for reading during NEPA blackouts.',
+            benefit: { energy: 12, taqwa: 1 },
+          },
+        ]}
+        onClose={close}
+      />
+    );
+  } else if (activity === 'chemist') {
+    title = 'Victory Chemist & First Aid';
+    body = (
+      <RoadsideShopModal
+        title="Victory Chemist"
+        vendorName="Victory Chemist & Pharmacy"
+        tagline="Genuine pharmaceuticals, pain relievers, vitamins and student first aid."
+        items={[
+          {
+            id: 'panadol',
+            name: 'Panadol Extra Pack',
+            icon: '💊',
+            price: 200,
+            desc: 'Rapid relief for headache, malaria fever, and afternoon sun strain.',
+            benefit: { energy: 20 },
+          },
+          {
+            id: 'vit_c',
+            name: 'Vitamin C & Multivitamins',
+            icon: '🍊',
+            price: 350,
+            desc: 'Chewable immune boosters to keep you alert and protect against illness.',
+            benefit: { energy: 14, pasanResistance: 4 },
+          },
+          {
+            id: 'robb_balm',
+            name: 'Robb Inhaler & Balm',
+            icon: '🌿',
+            price: 250,
+            desc: 'Camphor and menthol ointment to soothe neck ache and clear sinuses.',
+            benefit: { energy: 15, taqwa: 1 },
+          },
+          {
+            id: 'plasters',
+            name: 'First Aid Plaster Box',
+            icon: '🩹',
+            price: 200,
+            desc: 'Adhesive bandages for foot blisters and minor classroom cuts.',
+            benefit: { energy: 10, pasanResistance: 3 },
+          },
+        ]}
+        onClose={close}
+      />
+    );
+  } else if (activity === 'mechanic') {
+    title = 'Master Ganiyu Automobile & Okada Workshop';
+    body = (
+      <RoadsideShopModal
+        title="Master Ganiyu Workshop"
+        vendorName="Master Ganiyu Automobile Engineering"
+        tagline="Engine overhauls, brake pad servicing, vehicle foam washing, and fuel."
+        items={[
+          {
+            id: 'engine_tune',
+            name: 'Engine Tune-Up & Oil',
+            icon: '🔧',
+            price: 600,
+            desc: 'Top engine oil and tune carburetor for silky smooth highway speed.',
+            benefit: { energy: 25, barakah: 2 },
+          },
+          {
+            id: 'brake_service',
+            name: 'Brake Pad Adjustment',
+            icon: '⚙️',
+            price: 500,
+            desc: 'Tighten brake wires and align calipers to avoid traffic collisions.',
+            benefit: { energy: 20, barakah: 1 },
+          },
+          {
+            id: 'petrol_jerrycan',
+            name: '5L Fuel Jerrycan',
+            icon: '⛽',
+            price: 1200,
+            desc: 'Clean PMS petrol to keep your Okada, Keke, or Car cruising freely.',
+            benefit: { energy: 30, barakah: 2 },
+          },
+          {
+            id: 'foam_wash',
+            name: 'Foam Wash & Detailing',
+            icon: '✨',
+            price: 400,
+            desc: 'High-pressure wash to remove red Lagos dust and make paint shine.',
+            benefit: { energy: 15, barakah: 3 },
+          },
+        ]}
+        onClose={close}
+      />
+    );
   } else if (activity === 'football') {
     title = 'Ping Pong';
     body = <FootballMinigame onClose={close} initialMode={activeMatchRoom ? 'online' : 'friendly'} />;

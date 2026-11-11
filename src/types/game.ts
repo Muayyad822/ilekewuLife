@@ -2,7 +2,7 @@ export type LifeStage = 'omo_kewu' | 'arowo_kewu' | 'markaziy' | 'sheikh_agba';
 
 export type LearnerTier = 'starter' | 'standard' | 'advanced';
 
-export type MountVehicle = 'none' | 'bicycle' | 'okada';
+export type MountVehicle = 'none' | 'bicycle' | 'okada' | 'keke' | 'scooter' | 'car';
 
 export interface PlayerStats {
   ilm: number;             // Islamic knowledge / Arabic fluency (0 - 100)
@@ -117,7 +117,7 @@ export interface PlayerProfile {
   madrasahName: string;
 }
 
-export type Loc = 'school' | 'east' | 'west';
+export type Loc = 'school' | 'east' | 'west' | 'ejigbo' | 'oke_afa' | 'isolo' | 'bucknor' | 'idimu';
 
 export type ActivityId =
   | 'alfa' | 'ibtida' | 'well'
@@ -125,14 +125,15 @@ export type ActivityId =
   | 'adhan' | 'khutbah' | 'homelesson'
   | 'shop' | 'wardrobe' | 'bus'
   | 'football' | 'tenten' | 'suwe' | 'ayo' | 'skipping' | 'catcher' | 'throw'
-  | 'quiz_duel';
+  | 'quiz_duel'
+  | 'suya' | 'provisions' | 'chemist' | 'mechanic';
 
 export interface Outfit {
   robe: number;
   trim: number;
   cap: 'kofia' | 'turban' | 'hijab' | 'fila' | 'none';
   capColor: number;
-  prop: 'book' | 'cane' | 'kettle' | 'tesbih' | 'none';
+  prop: 'book' | 'cane' | 'kettle' | 'tesbih' | 'sandals' | 'attar' | 'miswak' | 'walaha' | 'qalam' | 'none';
 }
 
 export interface RideInfo {

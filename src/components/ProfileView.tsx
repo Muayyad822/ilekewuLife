@@ -26,6 +26,7 @@ import {
   KeyRound,
   Building2,
   Bell,
+  ChevronDown,
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
@@ -59,6 +60,7 @@ export const ProfileView: React.FC = () => {
   const [password, setPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [expandedHome, setExpandedHome] = useState<string | null>(null);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -438,62 +440,108 @@ export const ProfileView: React.FC = () => {
       {/* SECTION 2: REAL ESTATE & HOUSING PROGRESSION (RUWAQ -> RENT ROOM -> MINI-FLAT -> BUY HOUSE) */}
       {section === 'housing' && (
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h4 className="font-extrabold text-sm text-amber-950 flex items-center gap-1.5">
-                <Home className="w-4 h-4 text-amber-700" /> Madrasah &amp; Lagos Real Estate Market
-              </h4>
-              <p className="text-xs text-amber-900/80">
-                Every student begins in <b>Ruwaq</b> (the Madrasah boarding house). Save your stipends, Home Lesson fees, and monitor pay to rent an off-campus room or buy your own permanent house!
-              </p>
-            </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <h4 className="font-extrabold text-sm text-amber-950 flex items-center gap-1.5">
+              <Home className="w-4 h-4 text-amber-700" /> Madrasah &amp; Lagos Real Estate Market
+            </h4>
+            <p className="text-xs text-amber-900/80 mt-1 leading-relaxed line-clamp-2 sm:line-clamp-none">
+              Every student begins in <b>Ruwaq</b> (the Madrasah boarding house). Save your stipends, Home Lesson fees, and monitor pay to rent an off-campus room or buy your own permanent house!
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3.5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5">
             {HOUSING_TIERS.map((prop) => {
               const isCurrent = housing.tier === prop.id;
               const isOwned = isCurrent && housing.ownership === 'owned';
               const isRented = isCurrent && housing.ownership === 'rented';
+              const expanded = expandedHome === prop.id;
+              const stats: { icon: string; label: string }[] = [
+                { icon: '⚡', label: `+${prop.energyRecovery} energy / night` },
+                ...(prop.ilmBonusPct > 0 ? [{ icon: '📚', label: `+${prop.ilmBonusPct}% Ilm` }] : []),
+                ...(prop.dailyPassiveIncome > 0 ? [{ icon: '💰', label: `+₦${prop.dailyPassiveIncome.toLocaleString()} / day` }] : []),
+              ];
 
               return (
-                <div
+                <article
                   key={prop.id}
-                  className={`p-4 sm:p-5 rounded-2xl border-2 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition ${
+                  className={`rounded-2xl border-2 bg-white overflow-hidden flex flex-col transition ${
                     isCurrent ? 'border-emerald-600 bg-emerald-50/30 shadow-sm' : 'border-stone-200'
                   }`}
                 >
-                  <div className="flex items-start gap-3.5">
+                  <div className="p-4 pb-3 flex items-start gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl shrink-0">
                       {prop.icon}
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-extrabold text-base text-stone-900">{prop.name}</span>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <h5 className="font-extrabold text-[15px] leading-tight text-stone-900">{prop.name}</h5>
                         <span dir="rtl" className="text-xs font-serif text-stone-500">
                           {prop.arabicName}
                         </span>
-                        {isCurrent && (
-                          <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-600 text-white">
-                            {isOwned ? '✓ Owned Residence' : isRented ? `✓ Rented (${housing.rentDueInDays}d)` : '✓ Current Boarding'}
-                          </span>
-                        )}
                       </div>
-                      <p className="text-xs font-semibold text-stone-500">{prop.subtitle}</p>
-                      <p className="text-xs text-stone-600 leading-relaxed">{prop.description}</p>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {prop.perks.map((p, i) => (
-                          <span
-                            key={i}
-                            className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 flex items-center gap-1"
-                          >
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> {p}
-                          </span>
-                        ))}
-                      </div>
+                      <p className="text-[11px] font-semibold text-stone-500 leading-snug">{prop.subtitle}</p>
+                      {isCurrent && (
+                        <span className="inline-block mt-1 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-600 text-white">
+                          {isOwned ? '✓ Owned Residence' : isRented ? `✓ Rented (${housing.rentDueInDays}d)` : '✓ Current Boarding'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex sm:flex-col items-stretch sm:items-end justify-end gap-2 shrink-0">
+                  <div className="px-4 flex flex-wrap gap-1.5">
+                    {stats.map((st) => (
+                      <span
+                        key={st.label}
+                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-stone-100 text-stone-700 flex items-center gap-1"
+                      >
+                        <span aria-hidden>{st.icon}</span> {st.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="px-4 pt-3 flex items-center justify-between gap-3">
+                    <p className="text-xs text-stone-600">
+                      {prop.rentPrice > 0 || prop.buyPrice ? (
+                        <>
+                          {prop.rentPrice > 0 && (
+                            <span className="font-extrabold text-stone-900">₦{prop.rentPrice.toLocaleString()}/wk</span>
+                          )}
+                          {prop.rentPrice > 0 && prop.buyPrice ? <span className="text-stone-400"> · </span> : null}
+                          {prop.buyPrice ? (
+                            <span>
+                              buy <span className="font-extrabold text-stone-900">₦{prop.buyPrice.toLocaleString()}</span>
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="font-extrabold text-emerald-700">Free boarding</span>
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={`home-details-${prop.id}`}
+                      onClick={() => setExpandedHome(expanded ? null : prop.id)}
+                      className="sm:hidden min-h-[36px] px-2.5 rounded-lg text-[11px] font-extrabold text-stone-600 hover:bg-stone-100 flex items-center gap-1 cursor-pointer"
+                    >
+                      {expanded ? 'Hide details' : 'Details'}
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+
+                  {/* Lore + perks: always visible from tablet up, collapsible on phones */}
+                  <div id={`home-details-${prop.id}`} className={`${expanded ? 'block' : 'hidden'} sm:block px-4 pt-2 space-y-2`}>
+                    <p className="text-xs text-stone-600 leading-relaxed">{prop.description}</p>
+                    <ul className="space-y-1">
+                      {prop.perks.map((p, i) => (
+                        <li key={i} className="text-[11px] font-bold text-stone-800 flex items-start gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 mt-px text-emerald-600 shrink-0" /> <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-auto p-4 pt-3 flex flex-col sm:flex-row gap-2">
                     {prop.id === 'ruwaq' ? (
                       <button
                         disabled={isCurrent}
@@ -501,10 +549,8 @@ export const ProfileView: React.FC = () => {
                           const res = rentOrBuyHousing('ruwaq', 'rent');
                           setFeedback(res.msg);
                         }}
-                        className={`px-4 py-2 rounded-xl text-xs font-extrabold cursor-pointer ${
-                          isCurrent
-                            ? 'bg-stone-100 text-stone-400 cursor-default'
-                            : 'bg-stone-800 hover:bg-stone-900 text-white'
+                        className={`flex-1 min-h-[44px] px-4 py-2 rounded-xl text-xs font-extrabold cursor-pointer ${
+                          isCurrent ? 'bg-stone-100 text-stone-400 cursor-default' : 'bg-stone-800 hover:bg-stone-900 text-white'
                         }`}
                       >
                         {isCurrent ? 'Living Here' : 'Return to Ruwaq (₦0)'}
@@ -517,7 +563,7 @@ export const ProfileView: React.FC = () => {
                               const res = rentOrBuyHousing(prop.id, 'rent');
                               setFeedback(res.msg);
                             }}
-                            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1"
+                            className="flex-1 min-h-[44px] px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             {isRented ? 'Move In / Reset Lease' : `Rent (₦${prop.rentPrice.toLocaleString()}/wk)`}
@@ -530,10 +576,8 @@ export const ProfileView: React.FC = () => {
                               const res = rentOrBuyHousing(prop.id, 'buy');
                               setFeedback(res.msg);
                             }}
-                            className={`px-4 py-2 rounded-xl text-xs font-extrabold cursor-pointer ${
-                              isOwned
-                                ? 'bg-emerald-100 text-emerald-800 cursor-default'
-                                : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                            className={`flex-1 min-h-[44px] px-4 py-2 rounded-xl text-xs font-extrabold cursor-pointer ${
+                              isOwned ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-emerald-700 hover:bg-emerald-800 text-white'
                             }`}
                           >
                             {isOwned ? '✓ Owned Forever' : `Buy Outright (₦${prop.buyPrice.toLocaleString()})`}
@@ -542,7 +586,7 @@ export const ProfileView: React.FC = () => {
                       </>
                     )}
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
